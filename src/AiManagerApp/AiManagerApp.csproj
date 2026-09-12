@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The standalone AI Manager: enter keys once, edit any app's prompts, watch usage across
+       every app. A plain WPF exe (no Store listing for now); install by copying the publish folder. -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>AiManagerApp</RootNamespace>
+    <AssemblyName>AiManager</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <IsPackable>false</IsPackable>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Eaglin.AiManager.Wpf\Eaglin.AiManager.Wpf.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- WPF surfaces over Eaglin.AiManager: AI Settings, Prompt Library, Usage Dashboard (each a
+       UserControl plus a Window wrapper) and the AiRunPanel streaming control. Referenced by
+       WPF apps (AuthorPlus, EasyPeasyRetirement) and hosted by the standalone AiManagerApp. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Eaglin.AiManager.Wpf</RootNamespace>
+    <PackageId>Eaglin.AiManager.Wpf</PackageId>
+    <Description>WPF settings, prompt library, usage dashboard and streaming panel for Eaglin.AiManager.</Description>
+    <IsPackable>true</IsPackable>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Eaglin.AiManager\Eaglin.AiManager.csproj" />
+  </ItemGroup>
+
+</Project>

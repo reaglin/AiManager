@@ -47,12 +47,12 @@ Exit: Ron enters his keys once in the standalone app; AuthorPlus (Phase 3) finds
 
 | # | Task | Targets | Acceptance | Status |
 |---|---|---|---|---|
-| 2.1 | `Eaglin.AiManager.Wpf`: `AiSettingsWindow` (rows per provider, test, catalog refresh, default provider, per-app default, legacy import) | `src/Eaglin.AiManager.Wpf/` | hand-test; DPI-crisp | [ ] |
-| 2.2 | `PromptLibraryWindow` (list, edit, preview with sample values, reset) | same | | [ ] |
-| 2.3 | `UsageDashboardWindow` — month picker; totals (prompts, tokens in/out, cost, errors, avg ms); by app, by provider/model, by day; recent-calls grid; Copy as CSV; budget line | same | numbers match `UsageLedger.Summarize` on a fixture ledger | [ ] |
-| 2.4 | `AiRunPanel` control — streaming text area, Stop button, elapsed/tokens footer | same | used by AuthorPlus analysis item | [ ] |
-| 2.5 | `AiManagerApp` (WPF exe) hosting 2.1–2.3 as tabs; `--selftest` | `src/AiManagerApp/` | Ron's daily "what did I spend" view | [ ] |
-| 2.6 | `Eaglin.AiManager.WinForms`: the same three forms + panel for CIATLE/PreseMaker (built when PreseMaker migrates, Phase 4) | `src/Eaglin.AiManager.WinForms/` | | [ ] |
+| 2.1 | `Eaglin.AiManager.Wpf`: `AiSettingsWindow` (rows per provider, test, catalog refresh, default provider, per-app default, legacy import) | `src/Eaglin.AiManager.Wpf/` | hand-test; DPI-crisp | [x] |
+| 2.2 | `PromptLibraryWindow` (list, edit, preview with sample values, reset) | same | | [x] |
+| 2.3 | `UsageDashboardWindow` — month picker; totals (prompts, tokens in/out, cost, errors, avg ms); by app, by provider/model, by day; recent-calls grid; Copy as CSV; budget line | same | numbers match `UsageLedger.Summarize` on a fixture ledger | [x] |
+| 2.4 | `AiRunPanel` control — streaming text area, Stop button, elapsed/tokens footer | same | used by AuthorPlus analysis item | [x] |
+| 2.5 | `AiManagerApp` (WPF exe, assembly `AiManager.exe`) hosting 2.1–2.3 as tabs plus a **Try it** tab that streams through the AiRunPanel. No `--selftest` switch: the console tool `tools/AiManager.SelfTest` already covers that and a WPF exe has no console | `src/AiManagerApp/` | Ron's daily "what did I spend" view | [x] |
+| 2.6 | `Eaglin.AiManager.WinForms`: the same three forms + panel for CIATLE/PreseMaker — **deferred to Phase 4** (built when PreseMaker migrates, task 4.2) | `src/Eaglin.AiManager.WinForms/` | | [ ] |
 
 ## Phase 3 — Package and first consumer
 
@@ -99,3 +99,20 @@ Exit: AuthorPlus builds against `Eaglin.AiManager` from `C:\nuget-local` and its
   reports it unasked and rejects unknown fields); a cancelled or failed stream still writes a
   ledger line; `Pricing` matches by longest id prefix so dated ids price; the budget event
   fires once per process per month.
+- **2026-09-12 — Phase 2 done (WPF).** `Eaglin.AiManager.Wpf`: `AiSettingsView`/`Window`
+  (row per provider: masked key with Show, model drop-down seeded from the fallback list plus
+  the cached catalog, Models button to refresh the list, Test button that sends a one-word
+  prompt and ledgers it as `connection-test`, status dot; global default provider, per-app
+  default provider, monthly budget; Import keys… from the legacy files; Save/Revert),
+  `PromptLibraryView`/`Window` (list, editor, live placeholder list, preview with sample
+  values, Save / Reset to default / New / Delete; an app chooser in standalone mode),
+  `UsageDashboardView`/`Window` (month + app filters, six tiles, by app / by model / by day
+  with bars, recent calls, Copy as CSV, budget line), `AiRunPanel` (streaming box with Stop,
+  Copy, elapsed/tokens/cost footer). `AiManagerApp` hosts them in four tabs. Screenshots
+  checked 2026-09-12 (Settings, Prompt Library, Usage). Lesson: a resource dictionary with two
+  entries under one key (`Ai.Tile` brush + style) fails only when merged inside a control —
+  "DeferrableContent threw an exception" — and the standalone app now writes any unhandled
+  exception to `%TEMP%\AiManager-crash.txt`. Views take an `AiHub` in the constructor and edit
+  in memory until Save; Test/Models push typed keys into the hub in memory first, so an
+  unsaved key can be tried. Per-app *models* have no UI yet (only the per-app default
+  provider); edit `settings.json` for that.

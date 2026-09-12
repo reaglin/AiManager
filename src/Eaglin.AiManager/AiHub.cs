@@ -145,7 +145,23 @@ public sealed class AiHub
     /// Sends one request and yields the answer as it arrives. The final chunk carries usage.
     /// Cancelling the token stops the stream; the partial call is still recorded in the ledger.
     /// </summary>
-    public async IAsyncEnumerable<AiChunk> StreamAsync(AiRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    public IAsyncEnumerable<AiChunk> StreamAsync(AiRequest request, CancellationToken ct = default) =>
+        StreamCoreAsync(request, null, ct);
+
+    /// <summary>
+    /// Streams the answer through <paramref name="onChunk"/> (text chunks only) and returns the
+    /// finished <see cref="AiResponse"/> — the convenient form for a UI panel.
+    /// </summary>
+    public async Task<AiResponse> StreamAsync(AiRequest request, Action<AiChunk> onChunk, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(onChunk);
+        AiResponse? result = null;
+        await foreach (var chunk in StreamCoreAsync(request, r => result = r, ct))
+            if (!chunk.IsFinal) onChunk(chunk);
+        return result ?? throw new AiException(AiErrorKind.EmptyResponse, request.Provider ?? DefaultProvider, "The stream ended without a result.");
+    }
+
+    private async IAsyncEnumerable<AiChunk> StreamCoreAsync(AiRequest request, Action<AiResponse>? onDone, [EnumeratorCancellation] CancellationToken ct)
     {
         var p = Prepare(request);
         ActivityLog.Info("AiHub", $"→ {p.Provider}/{p.Model}  purpose={p.Purpose}  max_tokens={request.MaxTokens}  (stream)");
@@ -193,7 +209,8 @@ public sealed class AiHub
         }
         sw.Stop();
 
-        Finish(p, request, sw, text.ToString(), inTok, outTok, stop, streamed: true);
+        var response = Finish(p, request, sw, text.ToString(), inTok, outTok, stop, streamed: true);
+        onDone?.Invoke(response);
     }
 
     /// <summary>Binds a template from the app's prompt library and sends it whole.</summary>

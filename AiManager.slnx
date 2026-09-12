@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AiManagerApp/AiManagerApp.csproj" />
+    <Project Path="src/Eaglin.AiManager.Wpf/Eaglin.AiManager.Wpf.csproj" />
     <Project Path="src/Eaglin.AiManager/Eaglin.AiManager.csproj" />
   </Folder>
   <Folder Name="/tests/">

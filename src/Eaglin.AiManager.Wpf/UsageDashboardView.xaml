@@ -1,0 +1,117 @@
+<UserControl x:Class="Eaglin.AiManager.Wpf.UsageDashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="820" MinHeight="480">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Eaglin.AiManager.Wpf;component/Styles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <DockPanel Margin="16">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                <TextBlock Text="Month:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="MonthBox" Width="100" SelectionChanged="Filter_Changed"/>
+                <TextBlock Text="App:" VerticalAlignment="Center" Margin="14,0,6,0"/>
+                <ComboBox x:Name="AppBox" Width="140" SelectionChanged="Filter_Changed"/>
+                <Button Content="Refresh" Style="{StaticResource Ai.SmallButton}" Margin="14,0,0,0" Click="Refresh_Click"/>
+                <Button Content="Copy as CSV" Style="{StaticResource Ai.SmallButton}" Click="Csv_Click"
+                        ToolTip="Copies every call of the selected month (and app) as CSV to the clipboard."/>
+            </StackPanel>
+            <StackPanel>
+                <TextBlock Style="{StaticResource Ai.H1}" Text="AI Usage"/>
+                <TextBlock x:Name="SubText" Style="{StaticResource Ai.MutedText}" Text="Every call made through the AI Manager, by every app. Costs are estimates from list prices."/>
+            </StackPanel>
+        </DockPanel>
+
+        <TextBlock DockPanel.Dock="Top" x:Name="BudgetText" Margin="0,0,0,8" FontWeight="SemiBold"/>
+
+        <WrapPanel DockPanel.Dock="Top" x:Name="Tiles">
+            <Border Style="{StaticResource Ai.Tile}"><StackPanel><TextBlock x:Name="TilePrompts" Style="{StaticResource Ai.TileValue}"/><TextBlock Style="{StaticResource Ai.TileLabel}" Text="prompts"/></StackPanel></Border>
+            <Border Style="{StaticResource Ai.Tile}"><StackPanel><TextBlock x:Name="TileIn" Style="{StaticResource Ai.TileValue}"/><TextBlock Style="{StaticResource Ai.TileLabel}" Text="tokens in"/></StackPanel></Border>
+            <Border Style="{StaticResource Ai.Tile}"><StackPanel><TextBlock x:Name="TileOut" Style="{StaticResource Ai.TileValue}"/><TextBlock Style="{StaticResource Ai.TileLabel}" Text="tokens out"/></StackPanel></Border>
+            <Border Style="{StaticResource Ai.Tile}"><StackPanel><TextBlock x:Name="TileCost" Style="{StaticResource Ai.TileValue}"/><TextBlock Style="{StaticResource Ai.TileLabel}" Text="estimated cost"/></StackPanel></Border>
+            <Border Style="{StaticResource Ai.Tile}"><StackPanel><TextBlock x:Name="TileErrors" Style="{StaticResource Ai.TileValue}"/><TextBlock Style="{StaticResource Ai.TileLabel}" Text="failed / cancelled"/></StackPanel></Border>
+            <Border Style="{StaticResource Ai.Tile}"><StackPanel><TextBlock x:Name="TileAvg" Style="{StaticResource Ai.TileValue}"/><TextBlock Style="{StaticResource Ai.TileLabel}" Text="average time"/></StackPanel></Border>
+        </WrapPanel>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Row="0" Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Ai.H2}" Text="By app" Margin="0,0,0,4"/>
+                <DataGrid x:Name="ByAppGrid" Style="{StaticResource Ai.Grid}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="App" Binding="{Binding Key}" Width="*"/>
+                        <DataGridTextColumn Header="Prompts" Binding="{Binding Prompts}" Width="Auto"/>
+                        <DataGridTextColumn Header="In" Binding="{Binding InputTokens, StringFormat=N0}" Width="Auto"/>
+                        <DataGridTextColumn Header="Out" Binding="{Binding OutputTokens, StringFormat=N0}" Width="Auto"/>
+                        <DataGridTextColumn Header="Cost" Binding="{Binding CostUsd, StringFormat=\$0.0000}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <DockPanel Grid.Row="0" Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Ai.H2}" Text="By provider and model" Margin="0,0,0,4"/>
+                <DataGrid x:Name="ByModelGrid" Style="{StaticResource Ai.Grid}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Model" Binding="{Binding Key}" Width="*"/>
+                        <DataGridTextColumn Header="Prompts" Binding="{Binding Prompts}" Width="Auto"/>
+                        <DataGridTextColumn Header="In" Binding="{Binding InputTokens, StringFormat=N0}" Width="Auto"/>
+                        <DataGridTextColumn Header="Out" Binding="{Binding OutputTokens, StringFormat=N0}" Width="Auto"/>
+                        <DataGridTextColumn Header="Cost" Binding="{Binding CostUsd, StringFormat=\$0.0000}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <DockPanel Grid.Row="0" Grid.Column="4">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Ai.H2}" Text="By day" Margin="0,0,0,4"/>
+                <DataGrid x:Name="ByDayGrid" Style="{StaticResource Ai.Grid}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Day" Binding="{Binding Day}" Width="Auto"/>
+                        <DataGridTextColumn Header="Prompts" Binding="{Binding Prompts}" Width="Auto"/>
+                        <DataGridTextColumn Header="Cost" Binding="{Binding CostUsd, StringFormat=\$0.0000}" Width="Auto"/>
+                        <DataGridTemplateColumn Header="" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Rectangle Height="10" Width="{Binding BarWidth}" HorizontalAlignment="Left" Fill="{StaticResource Ai.Accent}" RadiusX="2" RadiusY="2" Margin="2,0"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5" Style="{StaticResource Ai.H2}" Text="Recent calls"/>
+
+            <DataGrid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" x:Name="RecentGrid" Style="{StaticResource Ai.Grid}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="When" Binding="{Binding When}" Width="Auto"/>
+                    <DataGridTextColumn Header="App" Binding="{Binding App}" Width="Auto"/>
+                    <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="Auto"/>
+                    <DataGridTextColumn Header="Model" Binding="{Binding Model}" Width="Auto"/>
+                    <DataGridTextColumn Header="Purpose" Binding="{Binding Purpose}" Width="*"/>
+                    <DataGridTextColumn Header="In" Binding="{Binding InTok, StringFormat=N0}" Width="Auto"/>
+                    <DataGridTextColumn Header="Out" Binding="{Binding OutTok, StringFormat=N0}" Width="Auto"/>
+                    <DataGridTextColumn Header="Cost" Binding="{Binding Cost}" Width="Auto"/>
+                    <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="Auto"/>
+                    <DataGridTextColumn Header="Result" Binding="{Binding Result}" Width="Auto"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+    </DockPanel>
+</UserControl>
