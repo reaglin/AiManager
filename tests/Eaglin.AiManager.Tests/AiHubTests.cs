@@ -44,7 +44,7 @@ public class AiHubTests
         Assert.Equal(10, r.InputTokens);
         Assert.Equal("TestApp", r.App);
         Assert.Equal("unit", r.Purpose);
-        Assert.Null(r.EstimatedCostUsd);
+        Assert.True(r.EstimatedCostUsd > 0);   // gemini-2.5-pro is in the built-in price table
     }
 
     [Fact]
@@ -114,5 +114,6 @@ public class AiHubTests
             ct.ThrowIfCancellationRequested();
             return Task.FromResult(new ProviderResult("x", 0, 0, null));
         }
+        public IAsyncEnumerable<AiChunk> StreamAsync(string s, string u, int m, CancellationToken ct) => throw new NotSupportedException();
     }
 }

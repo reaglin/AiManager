@@ -34,12 +34,12 @@ Exit: a chapter-length request streams into a console with Ctrl-C cancel; the le
 
 | # | Task | Targets | Acceptance | Status |
 |---|---|---|---|---|
-| 1.1 | `StreamAsync` on `IAiProvider` for all five providers (SSE parsing), `AiChunk`, final chunk carries usage; cancel closes the stream | `Providers/` | fake SSE tests incl. mid-stream cancel and error events | [ ] |
-| 1.2 | `ModelCatalog` — list-models call per provider, `models.json` cache with fetch time, `refresh` flag, built-in fallback list | `Catalog/` | fake responses parsed; cache used when offline | [ ] |
-| 1.3 | `Pricing` — embedded table + overrides; `EstimatedCostUsd` on every response | `Catalog/Pricing.cs` | known model → cost; unknown → null, tokens kept | [ ] |
-| 1.4 | `UsageLedger` — JSONL append per call (ok, error, cancelled), `Summarize(month, app?)` by app / provider+model / day, `Recent(n)` | `Usage/` | rollover at month boundary; summary numbers tested | [ ] |
-| 1.5 | `PromptTemplate` + `PromptLibrary` — per-app folder, `RegisterDefaults`, `Bind`, `ResetToDefault`, never overwrite user edits | `Prompts/` | placeholder tests; user-edited file survives re-register | [ ] |
-| 1.6 | Monthly budget: `AiHub` raises a `BudgetExceeded` warning event (soft) | `AiHub.cs` | test | [ ] |
+| 1.1 | `StreamAsync` on `IAiProvider` for all five providers (SSE parsing), `AiChunk`, final chunk carries usage; cancel closes the stream | `Providers/` | fake SSE tests incl. mid-stream cancel and error events | [x] |
+| 1.2 | `ModelCatalog` — list-models call per provider, `models.json` cache with fetch time, `refresh` flag, built-in fallback list | `Catalog/` | fake responses parsed; cache used when offline | [x] |
+| 1.3 | `Pricing` — embedded table + overrides; `EstimatedCostUsd` on every response | `Catalog/Pricing.cs` | known model → cost; unknown → null, tokens kept | [x] |
+| 1.4 | `UsageLedger` — JSONL append per call (ok, error, cancelled), `Summarize(month, app?)` by app / provider+model / day, `Recent(n)` | `Usage/` | rollover at month boundary; summary numbers tested | [x] |
+| 1.5 | `PromptTemplate` + `PromptLibrary` — per-app folder, `RegisterDefaults`, `Bind`, `ResetToDefault`, never overwrite user edits | `Prompts/` | placeholder tests; user-edited file survives re-register | [x] |
+| 1.6 | Monthly budget: `AiHub` raises a `BudgetExceeded` warning event (soft) | `AiHub.cs` | test | [x] |
 
 ## Phase 2 — UIs
 
@@ -87,3 +87,15 @@ Exit: AuthorPlus builds against `Eaglin.AiManager` from `C:\nuget-local` and its
   stays a pure vendor list; fan-out returns `AiOutcome` per provider so one failure never sinks
   the others; `AiSettings` dictionaries use `JsonObjectCreationHandling.Populate` so their
   case-insensitive comparers survive a load.
+- **2026-09-12 — Phase 1 done.** 65 unit tests green (SSE reader, streaming for all five
+  vendors incl. mid-stream cancel and error events, catalog parsing per vendor with cache and
+  fallback, pricing prefix/override rules, ledger rollover and summaries, prompt library
+  edit-preservation, hub accounting and the budget event). Live: `stream Claude` streamed a
+  661-token answer from claude-opus-5 in 14 s (est. $0.0168, recorded in the ledger); `models
+  Claude --refresh` fetched 11 models, `models Gemini --refresh` 40 (Gemini's list includes
+  non-chat previews — the settings UI should show the fallback names first and the rest under
+  "more"); `usage` and `prompts` show the ledger and the written template files. Design notes:
+  usage is requested with `stream_options.include_usage` on OpenAI and xAI only (Mistral
+  reports it unasked and rejects unknown fields); a cancelled or failed stream still writes a
+  ledger line; `Pricing` matches by longest id prefix so dated ids price; the budget event
+  fires once per process per month.

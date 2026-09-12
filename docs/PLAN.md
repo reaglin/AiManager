@@ -123,14 +123,14 @@ using Eaglin.AiManager;
 var ai = AiHub.Open("AuthorPlus");                     // app name tags everything
 
 // availability, for menus and status bars
-ai.IsAvailable(AiProviderType.Default)                 // default provider has a key
+ai.IsAvailable()                                       // the app's default provider has a key
 ai.ProvidersWithKeys                                   // for a "compare on…" menu
 ai.DisplayName(AiProviderType.Claude)                  // "Claude (Anthropic)"
 
 // one-shot
 AiResponse r = await ai.CompleteAsync(new AiRequest
 {
-    Provider  = AiProviderType.Default,                // or an explicit provider
+    Provider  = null,                                  // null = app default; or an explicit provider
     Model     = null,                                  // null = app/global default
     System    = "...",
     User      = "...",
@@ -141,7 +141,7 @@ r.Text; r.Provider; r.Model; r.InputTokens; r.OutputTokens; r.EstimatedCostUsd; 
 
 // streaming
 await foreach (AiChunk chunk in ai.StreamAsync(req, ct)) { append(chunk.Text); }
-// the final chunk carries usage; cancellation stops the HTTP stream and is logged
+// the final chunk (IsFinal) carries usage; cancellation stops the HTTP stream and is still ledgered
 
 // templates
 PromptTemplate t = ai.Prompts.Get("chapter-summary");  // app-scoped; built-in default if the user has none
@@ -149,19 +149,22 @@ var req2 = t.Bind(new { title = ch.Title, text = prose });   // {placeholders} �
 // ai.Prompts.List(), Save(t), ResetToDefault(name); apps register defaults at startup:
 ai.Prompts.RegisterDefaults(new[] { new PromptTemplate("chapter-summary", system, user) });
 
-// fan-out (AuthorPlus "compare evaluations")
-IReadOnlyList<AiResponse> all = await ai.CompleteOnAllAsync(req, providers, ct);
+// fan-out (AuthorPlus "compare evaluations") — one outcome per provider, failures isolated
+IReadOnlyList<AiOutcome> all = await ai.CompleteOnAllAsync(req, providers, ct);
+AiResponse r3 = await ai.RunTemplateAsync("chapter-summary", new { title, text }, ct);
 
 // usage
-UsageSummary u = ai.Usage.Summarize(month: DateTime.Now, app: "AuthorPlus");  // prompts, tokens, cost
+UsageSummary u = ai.Usage.Summarize(month: DateTime.Now, app: "AuthorPlus");  // totals, by app/model/day
 ai.Usage.Recent(50)                                    // for the dashboard's call list
+ai.BudgetExceeded += s => ...;                         // once per month when spend passes settings.MonthlyBudgetUsd
 
 // model catalog
-IReadOnlyList<ModelInfo> models = await ai.Models.ListAsync(AiProviderType.Claude, refresh: false, ct);
+ModelList models = await ai.Models.ListAsync(AiProviderType.Claude, refresh: false, ct);   // .Models, .FetchedUtc, .FromFallback
 ```
 
-`AiRequest` also carries `Temperature?`, `Messages` (optional multi-turn history for a later
-chat feature), and `Attachments` reserved for a future file/image input.
+`AiRequest.Provider` is nullable (null = the app default) so `AiProviderType` stays a pure
+vendor list. Multi-turn history and attachments are not in the request yet; they are additive
+when a chat feature needs them.
 
 Errors: `AiException` with `Kind` (NoKey, Auth, RateLimit, Network, ProviderError, Cancelled)
 and the provider's message, so UIs can say "your OpenAI key was rejected" instead of dumping

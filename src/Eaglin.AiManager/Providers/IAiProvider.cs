@@ -2,8 +2,8 @@ namespace Eaglin.AiManager.Providers;
 
 /// <summary>
 /// Contract every vendor wrapper satisfies: one system + user prompt in, text and token counts
-/// out. Each wraps its own REST API directly so the library never depends on a vendor SDK.
-/// Apps do not use this directly — they go through <see cref="AiHub"/>.
+/// out — as a whole or as a stream. Each wraps its own REST API directly so the library never
+/// depends on a vendor SDK. Apps do not use this directly — they go through <see cref="AiHub"/>.
 /// </summary>
 public interface IAiProvider
 {
@@ -23,6 +23,13 @@ public interface IAiProvider
     /// every failure the caller can act on, and <see cref="OperationCanceledException"/> when cancelled.
     /// </summary>
     Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct);
+
+    /// <summary>
+    /// Sends the prompt and yields the answer as it is generated. The last chunk is
+    /// <see cref="AiChunk.IsFinal"/> and carries usage. Cancelling the token closes the
+    /// connection and throws <see cref="OperationCanceledException"/> from the enumerator.
+    /// </summary>
+    IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct);
 }
 
 public sealed record ProviderResult(string Text, int InputTokens, int OutputTokens, string? StopReason);
