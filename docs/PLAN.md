@@ -1,0 +1,293 @@
+# AiManager — design and decisions
+
+Decided with Ron 2026-09-12 during the AuthorPlus planning session. This document is the
+"why and what"; `DEVELOPMENT-PLAN.md` is the "in what order".
+
+## 1. Purpose
+
+Ron writes several AI-enabled Windows apps (CIATLE, PreseMaker, AuthorPlus, EasyPeasyRetirement,
+more planned). Each has grown its own copy of the same AI layer: four providers, a settings
+form, DPAPI key storage, an activity log. CIATLE and AuthorPlus already *borrow* PreseMaker's
+saved keys one-way, which is an AI Manager by accident. This repo makes it deliberate:
+
+- **The user enters keys once**, in any app or in the standalone AI Manager, and every app uses them.
+- **Apps send prompts and get responses** through one library; no app owns provider code.
+- **One activity log, one usage ledger, one dashboard** across all apps.
+- **Prompt templates** are stored per app and editable by the user, not hard-coded.
+
+## 2. Decisions (2026-09-12)
+
+| Question | Decision |
+|---|---|
+| Delivery | Shared class library + shared key store on disk, plus optional settings UIs for WPF and WinForms, plus a standalone AI Manager exe. No service process, no IPC. |
+| Distribution | Versioned NuGet packages in a **local feed** (`C:\nuget-local`). Apps pin a version. |
+| Providers | Several at once. Every request names a provider (or asks for the app's default). Add xAI (Grok) as a fifth provider. |
+| Owned centrally | Key store; activity log; usage and cost tracking; streaming with cancel; prompt templates with variables; model catalog with refresh; **an AI dashboard** (usage, tokens, prompt counts). |
+| Sequence | Build the manager first, seeded from `AuthorPlus\src\AuthorPlus.AI`; AuthorPlus adopts it and deletes its copy; then EasyPeasyRetirement, PreseMaker, CIATLE. |
+| Store location | `Documents\AiManager\` (Ron may rename; see §4). |
+| Naming | Repo `AiManager`; package ids and root namespace `Eaglin.AiManager`. CIATLE's existing `AiManager` class is unaffected (different namespace) and becomes an adapter later. |
+
+## 3. Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ apps: AuthorPlus (WPF) · EasyPeasyRetirement (WPF) · PreseMaker · CIATLE      │
+│                                                                              │
+│   Eaglin.AiManager.Wpf          Eaglin.AiManager.WinForms                    │
+│   AiSettingsWindow              AiSettingsForm                               │
+│   PromptLibraryWindow           PromptLibraryForm                            │
+│   UsageDashboardWindow          UsageDashboardForm                           │
+│   AiRunPanel (stream + cancel)  AiRunPanel                                   │
+│            └────────────────┬────────────────┘                               │
+│                    Eaglin.AiManager  (net10.0, no UI)                        │
+│   AiHub ── Providers (Claude, Gemini, OpenAI, Mistral, xAI)                  │
+│         ── CredentialStore (DPAPI)     ── PromptLibrary + PromptTemplate     │
+│         ── ModelCatalog + Pricing      ── UsageLedger + ActivityLog          │
+│         ── LegacyCredentials (PreseMaker / CIATLE / AuthorPlus importers)    │
+│                              │                                               │
+│                Documents\AiManager\  (the shared store, §4)                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+      AiManagerApp.exe — standalone WPF: keys, templates, dashboard, model refresh
+```
+
+Dependency rules: the library depends on nothing but the BCL (System.Text.Json,
+System.Net.Http, System.Security.Cryptography.ProtectedData). UI packages depend on the
+library only. Apps depend on the library and, optionally, one UI package. The standalone app
+is just another consumer.
+
+## 4. The shared store on disk
+
+`Documents\AiManager\` — Documents, not AppData, because MSIX-packaged Store apps see a
+private, virtualized AppData and would each get their own copy. Documents is the one folder
+every app on the machine, packaged or not, reads and writes identically (PreseMaker has relied
+on this since 2025). OneDrive may sync Documents; the keys are DPAPI-bound to this Windows
+user on this machine, so a synced `credentials.json` is useless elsewhere, which is the
+intended behaviour.
+
+```
+Documents\AiManager\
+  credentials.json         keys (DPAPI, Base64) — one entry per provider
+  settings.json            global + per-app defaults (provider, model, price overrides)
+  models.json              cached model catalog per provider, with fetch time
+  prompts\<App>\<name>.json     prompt templates, one file each
+  usage\usage-YYYY-MM.jsonl     one line per call (the ledger; feeds the dashboard)
+  logs\activity-YYYY-MM.log     human-readable activity log (all apps)
+```
+
+**credentials.json** (PascalCase, versioned):
+
+```json
+{
+  "SchemaVersion": 1,
+  "Providers": {
+    "Claude":  { "ApiKeyEncrypted": "<base64 DPAPI>", "UpdatedUtc": "…", "UpdatedBy": "AuthorPlus" },
+    "Gemini":  { "ApiKeyEncrypted": "" },
+    "OpenAi":  { "ApiKeyEncrypted": "" },
+    "Mistral": { "ApiKeyEncrypted": "" },
+    "XAi":     { "ApiKeyEncrypted": "" }
+  }
+}
+```
+
+**settings.json**:
+
+```json
+{
+  "SchemaVersion": 1,
+  "DefaultProvider": "Claude",
+  "Models":  { "Claude": "claude-opus-5", "Gemini": "models/gemini-2.5-flash", "OpenAi": "gpt-4o", "Mistral": "mistral-large-latest", "XAi": "grok-4" },
+  "Apps": {
+    "AuthorPlus": { "DefaultProvider": "Claude", "Models": { "Claude": "claude-sonnet-5" } }
+  },
+  "PriceOverrides": { "claude-opus-5": { "InputPerMTok": 15.0, "OutputPerMTok": 75.0 } },
+  "MonthlyBudgetUsd": null
+}
+```
+
+Per-app entries override global ones; anything missing falls through. Apps never write the
+global section except through the settings UI.
+
+**Encryption:** `ProtectedData.Protect(utf8, null, DataProtectionScope.CurrentUser)` → Base64,
+exactly PreseMaker's scheme, so its blobs (and CIATLE's, once CIATLE encrypts) import as-is.
+
+**Concurrency:** several apps may run at once. All JSON writes are temp-then-move; the ledger
+and log append with `FileShare.ReadWrite` and a short retry; a stale read is tolerated (the
+settings UI re-reads before it saves; last writer wins per file, which is acceptable for a
+single user).
+
+## 5. Public API (the part apps see)
+
+```csharp
+using Eaglin.AiManager;
+
+var ai = AiHub.Open("AuthorPlus");                     // app name tags everything
+
+// availability, for menus and status bars
+ai.IsAvailable(AiProviderType.Default)                 // default provider has a key
+ai.ProvidersWithKeys                                   // for a "compare on…" menu
+ai.DisplayName(AiProviderType.Claude)                  // "Claude (Anthropic)"
+
+// one-shot
+AiResponse r = await ai.CompleteAsync(new AiRequest
+{
+    Provider  = AiProviderType.Default,                // or an explicit provider
+    Model     = null,                                  // null = app/global default
+    System    = "...",
+    User      = "...",
+    MaxTokens = 4000,
+    Purpose   = "chapter-summary"                      // free text; lands in log + ledger
+}, ct);
+r.Text; r.Provider; r.Model; r.InputTokens; r.OutputTokens; r.EstimatedCostUsd; r.Elapsed;
+
+// streaming
+await foreach (AiChunk chunk in ai.StreamAsync(req, ct)) { append(chunk.Text); }
+// the final chunk carries usage; cancellation stops the HTTP stream and is logged
+
+// templates
+PromptTemplate t = ai.Prompts.Get("chapter-summary");  // app-scoped; built-in default if the user has none
+var req2 = t.Bind(new { title = ch.Title, text = prose });   // {placeholders} → values
+// ai.Prompts.List(), Save(t), ResetToDefault(name); apps register defaults at startup:
+ai.Prompts.RegisterDefaults(new[] { new PromptTemplate("chapter-summary", system, user) });
+
+// fan-out (AuthorPlus "compare evaluations")
+IReadOnlyList<AiResponse> all = await ai.CompleteOnAllAsync(req, providers, ct);
+
+// usage
+UsageSummary u = ai.Usage.Summarize(month: DateTime.Now, app: "AuthorPlus");  // prompts, tokens, cost
+ai.Usage.Recent(50)                                    // for the dashboard's call list
+
+// model catalog
+IReadOnlyList<ModelInfo> models = await ai.Models.ListAsync(AiProviderType.Claude, refresh: false, ct);
+```
+
+`AiRequest` also carries `Temperature?`, `Messages` (optional multi-turn history for a later
+chat feature), and `Attachments` reserved for a future file/image input.
+
+Errors: `AiException` with `Kind` (NoKey, Auth, RateLimit, Network, ProviderError, Cancelled)
+and the provider's message, so UIs can say "your OpenAI key was rejected" instead of dumping
+JSON. Never throw a raw `HttpRequestException` to an app.
+
+## 6. Providers
+
+| Provider | Endpoint | Streaming | List models |
+|---|---|---|---|
+| Claude (Anthropic) | `POST /v1/messages` | SSE, `stream: true` | `GET /v1/models` |
+| Gemini (Google) | `POST /v1beta/{model}:generateContent` | `:streamGenerateContent?alt=sse` | `GET /v1beta/models` |
+| OpenAI | `POST /v1/chat/completions` | SSE, `stream: true` | `GET /v1/models` |
+| Mistral | `POST /v1/chat/completions` (OpenAI-shaped) | same | `GET /v1/models` |
+| xAI (Grok) | `POST https://api.x.ai/v1/chat/completions` (OpenAI-shaped) | same | `GET /v1/models` |
+
+The existing AuthorPlus.AI providers (`Providers.cs`, 270 lines) are the seed: one shared
+`HttpClient`, uniform error mapping, usage parsing. Streaming is added per provider as an
+`IAsyncEnumerable<AiChunk>`; non-streaming remains for callers that want a single string.
+`ChatCompletions` (the OpenAI-shaped helper) serves OpenAI, Mistral and xAI.
+
+Default model ids on day one (from AuthorPlus.AI, updated 2026-09-04): Claude
+`claude-opus-5`; Gemini `models/gemini-2.5-flash`; OpenAI `gpt-4o`; Mistral
+`mistral-large-latest`; xAI `grok-4` (verify against the live catalog before release — the
+catalog refresh exists precisely so this table stops mattering).
+
+**Pricing:** an embedded table of USD per million input/output tokens for the models in the
+default lists, plus `PriceOverrides` in settings for anything else. Cost is *estimated* and
+labelled so everywhere. Unknown model → cost blank, tokens still recorded.
+
+## 7. Prompt templates
+
+A template is a named pair (system, user) with `{placeholders}`, an optional default
+`MaxTokens`, and a description shown in the library window. Apps ship defaults in code and call
+`RegisterDefaults` at startup; the library writes any that are missing to
+`prompts\<App>\` on first use and never overwrites a user-edited file. The settings UI offers
+"Reset to default" per template and a live preview with sample values. Placeholder values are
+inserted verbatim; the template author owns the framing.
+
+## 8. Activity log, usage ledger, dashboard
+
+- **Activity log** (`logs\activity-YYYY-MM.log`): one line per event, `time | app | level |
+  message`. Every request start/finish/error, key changes (never the key), catalog refreshes.
+  Apps get `ai.Log.Info(...)` for their own notes so a single file tells the whole story.
+- **Usage ledger** (`usage\usage-YYYY-MM.jsonl`): one JSON object per completed or failed call:
+  `{ "T", "App", "Provider", "Model", "Purpose", "InTok", "OutTok", "CostUsd", "Ms",
+  "Ok", "Error", "Streamed", "Cancelled" }`. Append-only; monthly files stay small.
+- **Dashboard** (Ron's request 2026-09-12): a window in the standalone app and in both UI
+  packages showing, for a chosen month (default: this one): total prompts, tokens in/out,
+  estimated cost, error count, average latency; the same broken down **by app**, **by
+  provider/model**, and **by day** (a small bar per day); and a list of the most recent calls
+  with purpose, app, provider, tokens, cost, elapsed, status. A "Copy as CSV" button and an
+  optional monthly budget line (from settings) that turns the total red when exceeded. All
+  computed from the ledger; no separate database.
+
+## 9. Settings UIs
+
+Three surfaces, same behaviour, built once per toolkit:
+
+- **AI Settings** — a row per provider: key box (masked, "Show"), model combo (from the
+  catalog, refresh button, free-typed ids allowed), "Test" (a one-token call), status dot
+  (green = key present and tested; grey = none). A "Default provider" combo and, when opened
+  from an app, an "Also use as default for *AppName*" option. An "Import keys from PreseMaker /
+  CIATLE / AuthorPlus" button runs `LegacyCredentials`.
+- **Prompt Library** — templates for the calling app (or all apps in the standalone), edit,
+  preview with sample values, reset.
+- **Usage Dashboard** — §8.
+
+The standalone **AI Manager** app (`AiManagerApp.exe`, WPF, no Store listing for now) opens
+straight to Settings with tabs for the other two. It exists so a user can manage keys without
+opening any particular app, and so Ron has one place to watch spend across everything.
+
+## 10. Packaging and distribution
+
+- `build/pack.ps1`: sets the version from `Directory.Build.props`, runs `dotnet pack -c Release`
+  for the three library projects into `C:\nuget-local\`, and registers the feed once:
+  `dotnet nuget add source C:\nuget-local --name eaglin-local` (idempotent check first).
+- Consumers: `<PackageReference Include="Eaglin.AiManager" Version="1.0.0" />` (+ `.Wpf` or
+  `.WinForms`). Upgrading is editing the version. Semantic versioning; bump minor for additive
+  API, major for breaking.
+- Because the feed is a folder, a clean clone on another machine needs the folder populated:
+  `pack.ps1` is the documented first step. Publishing to GitHub Packages is a later option
+  (decision 2026-09-12: local feed first).
+- The standalone app is published as a framework-dependent folder for now (`dotnet publish`),
+  installed by copying; an MSIX via SMADA's `packaging/pack.ps1` pattern if it ever ships.
+
+## 11. Migration of the existing apps
+
+Legacy key files, all DPAPI CurrentUser or plaintext, and their import path:
+
+| App | File | Key fields | Import |
+|---|---|---|---|
+| PreseMaker | `Documents\PreseMaker\app_settings.json` | `ClaudeApiKeyEncrypted` … (DPAPI) | decrypt, re-encrypt into the shared store |
+| CIATLE-FCE | `%AppData%\CIATLE-FCE\prefs.json` | `aiSettings.claudeApiKey` … (plaintext) | read, encrypt |
+| CIATLE-PE | `%AppData%\CIATLE.PE\config.json` | `AnthropicApiKey` (plaintext) | read, encrypt |
+| AuthorPlus | `%AppData%\AuthorPlus\ai_settings.json` | DPAPI | decrypt, re-encrypt |
+
+`LegacyCredentials.Discover()` lists what it found per app and provider; the settings UI shows
+it and imports on click. Nothing is imported silently, and legacy files are left untouched.
+
+Per app:
+
+1. **AuthorPlus** — replace `src/AuthorPlus.AI` with the package; `AiSettingsWindow` →
+   `Eaglin.AiManager.Wpf.AiSettingsWindow`; the two existing AI actions become templates;
+   delete the AI project and its tests (the library's tests cover them). Its
+   `PreseMakerCredentials` becomes the library's `LegacyCredentials.PreseMaker`.
+2. **EasyPeasyRetirement** — no AI code yet; references the package when its AI features start.
+3. **PreseMaker** — `AiProviderRouter` and `AiProviderSettingsForm` replaced by the package and
+   the WinForms form; per-task provider routing (`AiTaskAssignment`) maps onto
+   `AiRequest.Provider`; it keeps reading `app_settings.json` keys as a fallback until the user
+   imports, then the fallback is removed one release later. Narration (Google TTS) is not AI
+   Manager's concern.
+4. **CIATLE** — `CIATLE.AICore` deleted; `CIATLE.Core.Services.IAiManager` stays as the app's
+   interface with a 40-line adapter over `AiHub` so FCE forms do not change.
+
+## 12. Testing
+
+xUnit in `tests/`, no network: providers are tested against a fake `HttpMessageHandler` with
+recorded response shapes (including SSE streams and error bodies); `CredentialStore` round-trips
+on Windows and is skipped elsewhere; `PromptTemplate.Bind` covers missing/extra placeholders;
+`UsageLedger` covers append, monthly rollover, summarize by app/provider/day; `LegacyCredentials`
+uses synthetic files in a temp folder (the AuthorPlus tests for PreseMaker keys move here).
+A `--selftest` switch on the standalone app runs one real one-token call per configured
+provider and prints the results, which is the manual "is the key good" check.
+
+## 13. Open points for Ron
+
+- Folder name `Documents\AiManager` (or `Documents\Eaglin\AiManager` to group future shared things).
+- Whether the standalone app should be a Store listing eventually (free) or stay a side-loaded exe.
+- Monthly budget: a soft warning only, or should apps refuse to send once it is hit?
