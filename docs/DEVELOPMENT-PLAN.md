@@ -60,9 +60,9 @@ Exit: AuthorPlus builds against `Eaglin.AiManager` from `C:\nuget-local` and its
 
 | # | Task | Targets | Acceptance | Status |
 |---|---|---|---|---|
-| 3.1 | `build/pack.ps1` — version from props, pack three packages to `C:\nuget-local`, register feed idempotently; README section | `build/` | fresh clone: `pack.ps1` then AuthorPlus builds | [ ] |
-| 3.2 | AuthorPlus adoption (tracked in AuthorPlus `docs/DEVELOPMENT-PLAN.md` 1.15): package reference, delete `src/AuthorPlus.AI` and its tests, replace `AiSettingsWindow`, register its templates | AuthorPlus repo | AuthorPlus AI menu works with keys entered only in AiManagerApp | [ ] |
-| 3.3 | Tag `v1.0.0` | | | [ ] |
+| 3.1 | `build/pack.ps1` — version from props, pack three packages to `C:\nuget-local`, register feed idempotently; README section | `build/` | fresh clone: `pack.ps1` then AuthorPlus builds | [x] |
+| 3.2 | AuthorPlus adoption (tracked in AuthorPlus `docs/DEVELOPMENT-PLAN.md` 1.15): package reference, delete `src/AuthorPlus.AI` and its tests, replace `AiSettingsWindow`, register its templates | AuthorPlus repo | AuthorPlus AI menu works with keys entered only in AiManagerApp | [x] |
+| 3.3 | Tag `v1.0.0` | | | [x] |
 
 ## Phase 4 — Remaining consumers
 

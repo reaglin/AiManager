@@ -249,6 +249,14 @@ opening any particular app, and so Ron has one place to watch spend across every
   (decision 2026-09-12: local feed first).
 - The standalone app is published as a framework-dependent folder for now (`dotnet publish`),
   installed by copying; an MSIX via SMADA's `packaging/pack.ps1` pattern if it ever ships.
+- **Microsoft Store consumers (Ron, 2026-09-12):** the feed matters only at build time. NuGet
+  restore copies the package DLLs next to the app, `dotnet publish` puts them in the publish
+  folder, and the MSIX packs that folder — so a Store submission carries `Eaglin.AiManager.dll`
+  and `Eaglin.AiManager.Wpf.dll` inside the package and resolves nothing at install or run
+  time. The only third-party dependency underneath is Microsoft's
+  `System.Security.Cryptography.ProtectedData` (MIT), which is Store-safe. Everything else is
+  the .NET base library. DPAPI and `Documents\AiManager` both work inside an MSIX (full-trust
+  desktop app); AppData would not have (virtualised), which is why the store lives in Documents.
 
 ## 11. Migration of the existing apps
 
