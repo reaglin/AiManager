@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Command-line check of the shared store and the live providers, until the settings UI
+       exists (Phase 2). See Program.cs for the switches. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AiManager.SelfTest</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Eaglin.AiManager\Eaglin.AiManager.csproj" />
+  </ItemGroup>
+
+</Project>

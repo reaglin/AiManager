@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The shared AI layer every AI-enabled app references (see docs/PLAN.md).
+       No UI, no app dependency: providers, the shared key store under Documents\AiManager,
+       settings, activity log, legacy key import. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Eaglin.AiManager</RootNamespace>
+    <PackageId>Eaglin.AiManager</PackageId>
+    <Description>Shared AI provider access, key store, activity log and prompt handling for Ron Eaglin's Windows apps.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows DPAPI for API-key encryption at rest (guarded by OperatingSystem.IsWindows()). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Eaglin.AiManager.Tests" />
+  </ItemGroup>
+
+</Project>

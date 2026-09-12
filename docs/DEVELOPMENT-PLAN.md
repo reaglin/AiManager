@@ -18,15 +18,15 @@ configured provider using a key read from `Documents\AiManager\credentials.json`
 
 | # | Task | Targets | Acceptance | Status |
 |---|---|---|---|---|
-| 0.1 | Solution, projects, `Directory.Build.props` (version, nullable, warnings-as-errors), `.gitignore`, initial commit, GitHub repo `reaglin/AiManager` (private) | root | `dotnet build` clean | [ ] |
-| 0.2 | Copy AuthorPlus.AI into `src/Eaglin.AiManager`, rename namespaces, drop `UsePreseMakerKeys` (replaced by import) | `src/Eaglin.AiManager/*` | existing AuthorPlus AI tests pass under the new names | [ ] |
-| 0.3 | `AiProviderType` gains `XAi`; `XAiProvider` over the OpenAI-shaped helper | `Providers/` | fake-handler test | [ ] |
-| 0.4 | `CredentialStore` — `Documents\AiManager\credentials.json`, DPAPI, temp-then-move, guarded for non-Windows | `Store/CredentialStore.cs` | round-trip test; corrupt file → empty store + log line, never throws | [ ] |
-| 0.5 | `AiSettingsStore` — `settings.json` with global + per-app defaults, price overrides, budget | `Store/AiSettingsStore.cs` | fall-through resolution tested (app → global → built-in) | [ ] |
-| 0.6 | `AiHub.Open(app)`, `AiRequest`/`AiResponse`/`AiException`, `CompleteAsync`, `CompleteOnAllAsync` | `AiHub.cs`, `Models/` | fake-provider tests: default resolution, explicit provider, no-key error kind | [ ] |
-| 0.7 | `ActivityLog` moved to `Documents\AiManager\logs\activity-YYYY-MM.log`, app-tagged, multi-process safe append | `ActivityLog.cs` | two writers interleave without exceptions | [ ] |
-| 0.8 | `LegacyCredentials` — discover + import from PreseMaker, CIATLE-FCE, CIATLE-PE, AuthorPlus files | `Legacy/` | synthetic-file tests per source; import never deletes the source | [ ] |
-| 0.9 | Console self-test project or `--selftest` in the (later) app: one call per provider with a key | `tools/` or `AiManagerApp` | Ron runs it with his real keys | [ ] |
+| 0.1 | Solution (`AiManager.slnx` — the SDK's new XML solution format), projects, `Directory.Build.props` (version, nullable, warnings-as-errors), `.gitignore`, initial commit, GitHub repo `reaglin/AiManager` (private) | root | `dotnet build` clean | [x] |
+| 0.2 | Copy AuthorPlus.AI into `src/Eaglin.AiManager`, rename namespaces, drop `UsePreseMakerKeys` (replaced by import) | `src/Eaglin.AiManager/*` | existing AuthorPlus AI tests pass under the new names | [x] |
+| 0.3 | `AiProviderType` gains `XAi`; `XAiProvider` over the OpenAI-shaped helper | `Providers/` | fake-handler test | [x] |
+| 0.4 | `CredentialStore` — `Documents\AiManager\credentials.json`, DPAPI, temp-then-move, guarded for non-Windows | `Store/CredentialStore.cs` | round-trip test; corrupt file → empty store + log line, never throws | [x] |
+| 0.5 | `AiSettingsStore` — `settings.json` with global + per-app defaults, price overrides, budget | `Store/AiSettingsStore.cs` | fall-through resolution tested (app → global → built-in) | [x] |
+| 0.6 | `AiHub.Open(app)`, `AiRequest`/`AiResponse`/`AiException`, `CompleteAsync`, `CompleteOnAllAsync` | `AiHub.cs`, `Models/` | fake-provider tests: default resolution, explicit provider, no-key error kind | [x] |
+| 0.7 | `ActivityLog` moved to `Documents\AiManager\logs\activity-YYYY-MM.log`, app-tagged, multi-process safe append | `ActivityLog.cs` | two writers interleave without exceptions | [x] |
+| 0.8 | `LegacyCredentials` — discover + import from PreseMaker, CIATLE-FCE, CIATLE-PE, AuthorPlus files | `Legacy/` | synthetic-file tests per source; import never deletes the source | [x] |
+| 0.9 | Console self-test `tools/AiManager.SelfTest` (`list`, `set`, `clear`, `default`, `model`, `discover`, `import`, `test`) | `tools/` | run 2026-09-12 against Ron's real keys — see notes below | [x] |
 
 ## Phase 1 — Streaming, catalog, usage, templates
 
@@ -77,4 +77,13 @@ Exit: AuthorPlus builds against `Eaglin.AiManager` from `C:\nuget-local` and its
 
 ## Notes from hand-testing
 
-*(append dated notes here)*
+- **2026-09-12 — Phase 0 done.** 31 unit tests green. `discover` found keys in PreseMaker
+  (Claude, Gemini, OpenAI) and CIATLE-FCE (same three); `import` copied them into
+  `Documents\AiManager\credentials.json` (note: Documents is under OneDrive on Ron's machine,
+  which is fine — the blobs are DPAPI-bound to this user and useless elsewhere). `test`: Claude (claude-opus-5) OK in 1.5 s,
+  Gemini (gemini-2.5-flash) OK in 1.3 s, OpenAI FAIL — the account has no API credits
+  (billing, not code); CIATLE-FCE's keys were the same three so nothing more to import. Design notes: `AiRequest.Provider` is
+  nullable (null = app default) rather than an `AiProviderType.Default` member, so the enum
+  stays a pure vendor list; fan-out returns `AiOutcome` per provider so one failure never sinks
+  the others; `AiSettings` dictionaries use `JsonObjectCreationHandling.Populate` so their
+  case-insensitive comparers survive a load.

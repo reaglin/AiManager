@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Eaglin.AiManager/Eaglin.AiManager.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Eaglin.AiManager.Tests/Eaglin.AiManager.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AiManager.SelfTest/AiManager.SelfTest.csproj" />
+  </Folder>
+</Solution>

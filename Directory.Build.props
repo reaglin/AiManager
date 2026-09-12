@@ -1,0 +1,31 @@
+<Project>
+
+  <!-- Shared settings for every project in src/, tests/ and tools/. -->
+
+  <PropertyGroup>
+    <!-- One version property. build/pack.ps1 reads it for the package version. -->
+    <AiManagerVersion>0.1.0</AiManagerVersion>
+    <Version>$(AiManagerVersion)</Version>
+    <AssemblyVersion>$(AiManagerVersion).0</AssemblyVersion>
+    <FileVersion>$(AiManagerVersion).0</FileVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Company>Ron Eaglin</Company>
+    <Authors>Ron Eaglin</Authors>
+    <Product>AiManager</Product>
+    <Copyright>Copyright © Ron Eaglin</Copyright>
+    <RepositoryUrl>https://github.com/reaglin/AiManager</RepositoryUrl>
+  </PropertyGroup>
+
+</Project>

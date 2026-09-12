@@ -11,7 +11,7 @@ usage ledger, one prompt-template store. Decided with Ron 2026-09-12; see `docs/
 ## Shape
 
 ```
-AiManager.sln
+AiManager.slnx
 ├── src/Eaglin.AiManager/           net10.0          the library every app references (NuGet)
 ├── src/Eaglin.AiManager.Wpf/       net10.0-windows  AI Settings / Prompt Library / Usage windows for WPF apps
 ├── src/Eaglin.AiManager.WinForms/  net10.0-windows  the same three as WinForms forms (CIATLE, PreseMaker)
@@ -46,7 +46,7 @@ TreatWarningsAsErrors. Fix warnings, never suppress them.
 ## Build, test, pack
 
 ```powershell
-dotnet build AiManager.sln
+dotnet build AiManager.slnx
 dotnet test tests/Eaglin.AiManager.Tests
 .\build\pack.ps1          # → C:\nuget-local\Eaglin.AiManager.<ver>.nupkg (+ Wpf, WinForms)
 ```
