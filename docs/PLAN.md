@@ -302,3 +302,52 @@ provider and prints the results, which is the manual "is the key good" check.
 - Folder name `Documents\AiManager` (or `Documents\Eaglin\AiManager` to group future shared things).
 - Whether the standalone app should be a Store listing eventually (free) or stay a side-loaded exe.
 - Monthly budget: a soft warning only, or should apps refuse to send once it is hit?
+
+## 14. Text to speech (Ron, 2026-09-12 — designed now, built in Phase 5)
+
+Ron: *"The AI manager should also be able to manage credentials and text to speech (note
+this is currently in PreseMaker). We are going to use TTS in AuthorPlus … audio versions of
+the chapters in version 2 (not v1), but we should develop knowing where we are going."*
+
+**What PreseMaker does today** (`Services/AudioGenerator.cs`, `Models/AppSettings.cs`):
+Google Cloud Text-to-Speech over REST; the credential is a **service-account JSON file** whose
+path is saved in `app_settings.json` (`TtsCredentialsFilePath`); an OAuth2 bearer token is
+minted from it with `Google.Apis.Auth`; the default voice is `en-US-Studio-M`; SSML is built by
+`SpeechMarkupService` with a pronunciation dictionary (`<sub alias>`), and WAV files are written
+per slide. That pipeline moves here so PreseMaker and AuthorPlus share it.
+
+**Design (additive to everything above):**
+
+- **Credential kinds.** `credentials.json` grows a `Services` section beside `Providers`:
+  `"GoogleCloud": { "ServiceAccountJsonEncrypted": "<DPAPI of the whole JSON>", "ProjectId": "…" }`.
+  The JSON *content* is stored encrypted, not a path, so the credential survives the file being
+  moved and is shared by every app. `LegacyCredentials` learns to read PreseMaker's
+  `TtsCredentialsFilePath` and import the file's content. The settings UI gets a "Services"
+  block: Google Cloud (choose JSON file → imported and encrypted; Test = list voices).
+- **`ITtsProvider`** in the library, first implementation `GoogleTtsProvider` (REST, token from
+  the stored service-account JSON — `Google.Apis.Auth` is Apache-2.0 and Store-safe; if a
+  dependency-free JWT signing is preferred, RS256 with `System.Security.Cryptography` is ~40
+  lines). Later: OpenAI TTS, Azure Speech, ElevenLabs — same interface.
+  `TtsRequest { Text | Ssml, Voice, LanguageCode, SpeakingRate, Pitch, AudioFormat (Wav|Mp3|Ogg), Purpose }`
+  → `TtsResponse { byte[] Audio, Format, Characters, EstimatedCostUsd, Elapsed }`, plus
+  `SynthesizeLongAsync` that splits at sentence boundaries under the vendor's per-request limit
+  (Google: 5,000 bytes) and concatenates, with progress and cancel.
+- **Voice catalog** (`VoiceCatalog`, cached in `models.json` under a `Voices` key): the vendor's
+  voice list with language, gender, and type (Studio/Neural2/WaveNet/Standard), refreshable like
+  models. Per-app default voice in `settings.json` (`Apps.AuthorPlus.Tts.Voice`).
+- **Pronunciation dictionary** and SSML helpers move from PreseMaker into the library
+  (`Speech/PronunciationDictionary`, `Speech/SpeechMarkup`): shared, stored at
+  `Documents\AiManager\speech\pronunciations.json`, editable in the settings UI.
+- **Ledger and dashboard:** TTS calls are ledger lines too, with `Chars` instead of tokens and
+  cost from a per-million-characters price table (Google Studio ≈ $160/M chars, Neural2 ≈
+  $16/M, Standard ≈ $4/M — verified when built). The dashboard shows a "characters spoken" tile
+  when any TTS call exists.
+- **`AiHub`** exposes `Speech` (the TTS service) beside `Prompts`, `Models`, `Usage`; the WPF
+  package gains a `TtsSettingsView` section and an `AudioPreviewPanel` (play/stop of a
+  synthesized sample).
+
+**What AuthorPlus v1 does about it now:** nothing in code except leaving room — no `Audio` item
+kind yet, no voice field on `Character`. The v2 design is in AuthorPlus `docs/DEVELOPMENT-PLAN.md`
+("Version 2 — Audio"): an `Audio` item kind whose file lives in `audio\{id}.mp3` beside the
+book's other folders, a `Character.Voice` for per-character voices, and speaker attribution of
+dialogue as the prerequisite for multi-voice narration.

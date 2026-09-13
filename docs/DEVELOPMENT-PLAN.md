@@ -73,6 +73,21 @@ Exit: AuthorPlus builds against `Eaglin.AiManager` from `C:\nuget-local` and its
 | 4.3 | CIATLE: delete `CIATLE.AICore`, adapter implementing `IAiManager` over `AiHub` | CIATLE repo | FCE narrative drafting unchanged for the user | [ ] |
 | 4.4 | Remove legacy fallbacks; `LegacyCredentials` stays as an import button only | all | | [ ] |
 
+## Phase 5 — Text to speech (Ron, 2026-09-12; see PLAN.md §14)
+
+Exit: PreseMaker's narration and AuthorPlus v2's chapter audio both synthesize through the
+library with one stored Google Cloud credential.
+
+| # | Task | Targets | Acceptance | Status |
+|---|---|---|---|---|
+| 5.1 | `credentials.json` `Services` section: Google Cloud service-account JSON stored encrypted; `LegacyCredentials` imports PreseMaker's `TtsCredentialsFilePath` content | `Store/`, `Legacy/` | round-trip + import tests | [ ] |
+| 5.2 | `ITtsProvider` + `GoogleTtsProvider` (REST; OAuth token from the stored JSON), `TtsRequest`/`TtsResponse`, `SynthesizeLongAsync` with sentence-boundary chunking, progress, cancel | `Speech/` | fake-handler tests incl. chunk boundaries | [ ] |
+| 5.3 | `VoiceCatalog` (list voices, cache, refresh) + per-app default voice in settings | `Catalog/` | test | [ ] |
+| 5.4 | Pronunciation dictionary + SSML markup moved from PreseMaker into `Speech/`; shared file under `Documents\AiManager\speech\` | `Speech/` | PreseMaker's narration tests pass against the library | [ ] |
+| 5.5 | Ledger: `Chars` + character-based pricing; dashboard "characters spoken" tile | `Usage/`, WPF/WinForms | | [ ] |
+| 5.6 | Settings UI "Services" block (choose JSON → encrypted; Test lists voices; default voice); `AudioPreviewPanel` | WPF + WinForms | | [ ] |
+| 5.7 | PreseMaker's `AudioGenerator` becomes a thin caller of `AiHub.Speech`; AuthorPlus v2 Audio items (its plan) | both repos | | [ ] |
+
 ---
 
 ## Notes from hand-testing

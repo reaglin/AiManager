@@ -3,7 +3,9 @@
 Shared AI access layer for every AI-enabled app in `C:\Users\ronal\source\repos\`
 (AuthorPlus, EasyPeasyRetirement, PreseMaker, CIATLE, and whatever comes next). One place
 to enter API keys, one library that sends prompts and returns answers, one activity log and
-usage ledger, one prompt-template store. Decided with Ron 2026-09-12; see `docs/PLAN.md`.
+usage ledger, one prompt-template store. **Phase 5 adds text-to-speech** (credentials for
+Google Cloud TTS, voices, synthesis, pronunciation dictionary — moving out of PreseMaker; see
+`docs/PLAN.md` §14). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
 
 **Read first:** `docs/PLAN.md` (design and decisions) then `docs/DEVELOPMENT-PLAN.md`
 (numbered tasks with status).
