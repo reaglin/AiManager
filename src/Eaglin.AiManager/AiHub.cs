@@ -91,6 +91,22 @@ public sealed class AiHub
 
     public static string DisplayName(AiProviderType provider) => AiProviderRouter.DisplayName(provider);
 
+    /// <summary>
+    /// A rough token count for English prose (about four characters per token) — enough to
+    /// show "≈ 12,000 tokens" before sending and to keep a payload under a model's limit.
+    /// Vendors count differently; the ledger records the real figures afterwards.
+    /// </summary>
+    public static int EstimateTokens(string? text) => string.IsNullOrEmpty(text) ? 0 : (int)Math.Ceiling(text.Length / 4.0);
+
+    /// <summary>Estimated cost of sending <paramref name="request"/> to a provider/model, from the price table (input side only; the answer adds to it).</summary>
+    public double? EstimateInputCost(AiRequest request, AiProviderType? provider = null, string? model = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var p = provider ?? request.Provider ?? DefaultProvider;
+        var m = model ?? request.Model ?? DefaultModel(p);
+        return Pricing.Estimate(m, EstimateTokens(request.System) + EstimateTokens(request.User), 0, Settings.PriceOverrides);
+    }
+
     // ── Calls ─────────────────────────────────────────────────────────────────
 
     private sealed record Prepared(AiProviderType Provider, string Model, IAiProvider Impl, string Purpose);

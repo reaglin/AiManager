@@ -117,7 +117,8 @@ public partial class AiSettingsView : UserControl
         AppDefaultHint.Text  = $"Only {_hub.App} is affected; other apps keep the global default.";
 
         BudgetBox.Text = _hub.Settings.MonthlyBudgetUsd is { } b ? b.ToString("0.##", CultureInfo.InvariantCulture) : string.Empty;
-        PathText.Text  = $"Store: {_hub.Root}";
+        var spent = _hub.Usage.SpentThisMonth();
+        PathText.Text  = $"Spent this month, all apps: ${spent:0.00} (estimated from list prices)   ·   Store: {_hub.Root}";
         FooterStatus.Text = string.Empty;
     }
 

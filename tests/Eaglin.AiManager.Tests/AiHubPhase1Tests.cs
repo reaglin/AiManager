@@ -145,3 +145,19 @@ public class AiHubPhase1Tests
         Assert.Equal(DateTime.Now.ToString("yyyy-MM"), w.Month);
     }
 }
+
+public class EstimateTests
+{
+    [Fact]
+    public void Token_estimate_is_about_a_quarter_of_the_characters_and_input_cost_uses_the_price_table()
+    {
+        Assert.Equal(0, AiHub.EstimateTokens(""));
+        Assert.Equal(1, AiHub.EstimateTokens("abc"));
+        Assert.Equal(250, AiHub.EstimateTokens(new string('x', 1000)));
+        using var t = new TempRoot();
+        var hub = AiHub.Open("TestApp", t.Path);
+        var req = new AiRequest { Model = "claude-opus-5", System = new string('a', 4000), User = new string('b', 4000) };   // 2,000 tokens
+        Assert.Equal(2000 / 1_000_000.0 * 5.0, hub.EstimateInputCost(req, AiProviderType.Claude)!.Value, 10);
+        Assert.Null(hub.EstimateInputCost(req, AiProviderType.Claude, "unknown-model"));
+    }
+}
