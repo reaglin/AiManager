@@ -18,9 +18,10 @@ public sealed class AiRequest
     /// <summary>Free text naming what the call is for ("chapter-summary"). Lands in the log and the usage ledger.</summary>
     public string Purpose { get; init; } = string.Empty;
 
-    public AiRequest With(AiProviderType provider, string? model = null) => new()
+    /// <summary>A copy aimed at another provider or model, optionally with the user prompt the author edited.</summary>
+    public AiRequest With(AiProviderType provider, string? model = null, string? user = null) => new()
     {
-        Provider = provider, Model = model ?? Model, System = System, User = User,
+        Provider = provider, Model = model ?? Model, System = System, User = user ?? User,
         MaxTokens = MaxTokens, Purpose = Purpose
     };
 }

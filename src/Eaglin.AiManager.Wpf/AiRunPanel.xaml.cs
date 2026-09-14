@@ -7,9 +7,11 @@ using System.Windows.Threading;
 namespace Eaglin.AiManager.Wpf;
 
 /// <summary>
-/// A streaming output box with Stop and Copy: drop it in a window, set <see cref="Hub"/>, and
-/// call <see cref="RunAsync"/> with a request. Text appears as it is generated; the footer
-/// shows elapsed time and, when done, tokens and estimated cost.
+/// The prompt console: the box first holds the request itself, editable, so the author can
+/// change it before sending (<see cref="ShowPrompt"/>, <see cref="PromptText"/>). On
+/// <see cref="RunAsync"/> it empties, shows "Running prompt…" with a timer, and fills with the
+/// answer as it is generated. The footer then reports time, tokens and estimated cost, and says
+/// plainly — in red — when the answer was cut off at the token limit.
 /// </summary>
 public partial class AiRunPanel : UserControl
 {
@@ -24,6 +26,36 @@ public partial class AiRunPanel : UserControl
     /// <summary>The text shown, whether finished, failed or stopped part-way.</summary>
     public string Text => Output.Text;
 
+    /// <summary>True while the box holds the request rather than an answer.</summary>
+    public bool IsShowingPrompt { get; private set; }
+
+    /// <summary>The request text as the author has it now (what <see cref="ShowPrompt"/> put there, plus any edits).</summary>
+    public string PromptText => IsShowingPrompt ? Output.Text : _prompt;
+
+    private string _prompt = string.Empty;
+
+    /// <summary>True when the last answer stopped because it hit the token ceiling.</summary>
+    public bool LastWasCutOff { get; private set; }
+
+    /// <summary>
+    /// Puts the request in the box for the author to read and edit before sending. Call again to
+    /// bring the request back after an answer has replaced it.
+    /// </summary>
+    public void ShowPrompt(string promptText)
+    {
+        _prompt = promptText ?? string.Empty;
+        IsShowingPrompt = true;
+        Output.IsReadOnly = false;
+        Output.FontFamily = new FontFamily("Consolas");
+        Output.FontSize = 12.5;
+        Output.Text = _prompt;
+        Output.CaretIndex = 0;
+        StatusText.Text = "This is the request. Edit it if you want, then Send Prompt.";
+        StatusText.Foreground = (Brush)FindResource("Ai.Muted");
+        StatusText.FontWeight = FontWeights.Normal;
+        CopyButton.IsEnabled = _prompt.Length > 0;
+    }
+
     /// <summary>The finished response of the last run, or null if it failed or was stopped.</summary>
     public AiResponse? LastResponse { get; private set; }
 
@@ -33,17 +65,21 @@ public partial class AiRunPanel : UserControl
     public AiRunPanel()
     {
         InitializeComponent();
-        _clock.Tick += (_, _) => StatusText.Text = $"Generating… {_sw.Elapsed.TotalSeconds:0.0}s";
+        _clock.Tick += (_, _) => StatusText.Text = $"Running prompt…  {_sw.Elapsed.TotalSeconds:0.0}s";
     }
 
     public void Clear()
     {
         Output.Clear();
+        Output.IsReadOnly = true;
+        IsShowingPrompt = false;
         StatusText.Text = "Ready.";
         StatusText.Foreground = (Brush)FindResource("Ai.Muted");
+        StatusText.FontWeight = FontWeights.Normal;
         CopyButton.IsEnabled = false;
         LastResponse = null;
         LastError = null;
+        LastWasCutOff = false;
     }
 
     /// <summary>
@@ -56,9 +92,15 @@ public partial class AiRunPanel : UserControl
         if (Hub is null) throw new InvalidOperationException("Set AiRunPanel.Hub before running.");
         if (IsRunning) throw new InvalidOperationException("A run is already in progress.");
 
+        if (IsShowingPrompt) _prompt = Output.Text;                 // keep the author's edits for a re-send
         Clear();
+        Output.FontFamily = new FontFamily("Segoe UI");
+        Output.FontSize = 13.5;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
         StopButton.IsEnabled = true;
+        StatusText.FontWeight = FontWeights.SemiBold;
+        StatusText.Foreground = (Brush)FindResource("Ai.Accent");
+        StatusText.Text = "Running prompt…  0.0s";
         _sw.Restart();
         _clock.Start();
 
@@ -71,14 +113,19 @@ public partial class AiRunPanel : UserControl
             }, _cts.Token);
 
             LastResponse = response;
+            LastWasCutOff = response.StopReason is "max_tokens" or "length" or "MAX_TOKENS";
             StatusText.Text = $"Done in {response.Elapsed.TotalSeconds:0.0}s · {response.Provider}/{response.Model} · in {response.InputTokens:N0} · out {response.OutputTokens:N0}" +
                               (response.EstimatedCostUsd is { } c ? $" · est. ${c:0.0000}" : "") +
-                              (response.StopReason is "max_tokens" or "length" or "MAX_TOKENS" ? "  — output was cut off at the token limit" : "");
+                              (LastWasCutOff ? $"   ⚠ CUT OFF at the {response.OutputTokens:N0}-token limit — the answer is incomplete. Raise \"max tokens\" for this prompt in AI › Prompt Library, or ask for less." : "");
+            StatusText.Foreground = (Brush)FindResource(LastWasCutOff ? "Ai.Bad" : "Ai.Muted");
+            StatusText.FontWeight = LastWasCutOff ? FontWeights.SemiBold : FontWeights.Normal;
             return response;
         }
         catch (OperationCanceledException)
         {
             StatusText.Text = $"Stopped after {_sw.Elapsed.TotalSeconds:0.0}s. The partial text above is what arrived.";
+            StatusText.Foreground = (Brush)FindResource("Ai.Muted");
+            StatusText.FontWeight = FontWeights.Normal;
             return null;
         }
         catch (AiException ex)
