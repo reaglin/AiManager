@@ -140,7 +140,7 @@ public sealed class AiHub
         ProviderResult result;
         try
         {
-            result = await p.Impl.GenerateAsync(request.System, request.User, request.MaxTokens, ct);
+            result = await p.Impl.GenerateAsync(request.System, request.User, request.MaxTokens, request.Images, ct);
         }
         catch (OperationCanceledException)
         {
@@ -186,7 +186,7 @@ public sealed class AiHub
         int inTok = 0, outTok = 0;
         string? stop = null;
 
-        var enumerator = p.Impl.StreamAsync(request.System, request.User, request.MaxTokens, ct).GetAsyncEnumerator(ct);
+        var enumerator = p.Impl.StreamAsync(request.System, request.User, request.MaxTokens, request.Images, ct).GetAsyncEnumerator(ct);
         try
         {
             while (true)

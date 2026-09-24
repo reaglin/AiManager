@@ -30,6 +30,18 @@ public interface IAiProvider
     /// connection and throws <see cref="OperationCanceledException"/> from the enumerator.
     /// </summary>
     IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct);
+
+    /// <summary>
+    /// As <see cref="GenerateAsync(string, string, int, CancellationToken)"/>, with pictures sent with
+    /// the user prompt (1.3.0). The five built-in providers send them; a provider that does not
+    /// override this sends the text alone, so providers written before 1.3.0 keep working.
+    /// </summary>
+    Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        GenerateAsync(systemPrompt, userPrompt, maxTokens, ct);
+
+    /// <summary>As <see cref="StreamAsync(string, string, int, CancellationToken)"/>, with pictures (1.3.0); the same fallback.</summary>
+    IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        StreamAsync(systemPrompt, userPrompt, maxTokens, ct);
 }
 
 public sealed record ProviderResult(string Text, int InputTokens, int OutputTokens, string? StopReason);

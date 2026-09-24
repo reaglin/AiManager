@@ -132,15 +132,22 @@ public sealed class ClaudeProvider : IAiProvider
 
     public bool HasApiKey => !string.IsNullOrWhiteSpace(_apiKey);
 
-    private HttpRequestMessage BuildRequest(string systemPrompt, string userPrompt, int maxTokens, bool stream)
+    private HttpRequestMessage BuildRequest(string systemPrompt, string userPrompt, int maxTokens, bool stream,
+        IReadOnlyList<AiImage>? images = null)
     {
+        // Text alone stays a plain string, exactly as before 1.3.0; with pictures, the content is
+        // a list of blocks, the pictures first (Anthropic's advice), then the text.
+        object content = images is not { Count: > 0 }
+            ? userPrompt
+            : images.Select(i => (object)new { type = "image", source = new { type = "base64", media_type = i.MediaType, data = i.Base64 } })
+                    .Append(new { type = "text", text = userPrompt }).ToArray();
         var request = new
         {
             model      = Model,
             max_tokens = maxTokens,
             system     = systemPrompt,
             stream     = stream,
-            messages   = new[] { new { role = "user", content = userPrompt } }
+            messages   = new[] { new { role = "user", content } }
         };
         var http = new HttpRequestMessage(HttpMethod.Post, ApiUrl);
         http.Headers.Add("x-api-key", _apiKey);
@@ -149,14 +156,17 @@ public sealed class ClaudeProvider : IAiProvider
         return http;
     }
 
-    public async Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct)
+    public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
+        GenerateAsync(systemPrompt, userPrompt, maxTokens, [], ct);
+
+    public async Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct)
     {
         if (!HasApiKey) throw ProviderHttp.NoKey(Type, "Claude");
 
         var context = $"Claude/{Model}";
         ProviderHttp.LogRequest(context, maxTokens, systemPrompt, userPrompt);
 
-        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: false);
+        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: false, images);
         using var response = await ProviderHttp.SendAsync(_http, Type, context, http, ct);
         await ProviderHttp.ThrowIfFailed(Type, context, "Anthropic", response, ct);
 
@@ -179,15 +189,18 @@ public sealed class ClaudeProvider : IAiProvider
         return new ProviderResult(text, inTok, outTok, result.StopReason);
     }
 
+    public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
+        StreamAsync(systemPrompt, userPrompt, maxTokens, [], ct);
+
     public async IAsyncEnumerable<AiChunk> StreamAsync(
-        string systemPrompt, string userPrompt, int maxTokens, [EnumeratorCancellation] CancellationToken ct)
+        string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, [EnumeratorCancellation] CancellationToken ct)
     {
         if (!HasApiKey) throw ProviderHttp.NoKey(Type, "Claude");
 
         var context = $"Claude/{Model}";
         ProviderHttp.LogRequest(context, maxTokens, systemPrompt, userPrompt, stream: true);
 
-        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: true);
+        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: true, images);
         using var response = await ProviderHttp.OpenStreamAsync(_http, Type, context, "Anthropic", http, ct);
         using var stream = await response.Content.ReadAsStreamAsync(ct);
 
@@ -278,13 +291,16 @@ public sealed class GeminiProvider : IAiProvider
         return s.StartsWith("models/", StringComparison.Ordinal) ? s : "models/" + s;
     }
 
-    private HttpRequestMessage BuildRequest(string systemPrompt, string userPrompt, int maxTokens, bool stream)
+    private HttpRequestMessage BuildRequest(string systemPrompt, string userPrompt, int maxTokens, bool stream,
+        IReadOnlyList<AiImage>? images = null)
     {
         var url = BaseUrl + ModelSegment(Model) + (stream ? ":streamGenerateContent?alt=sse" : ":generateContent");
+        object[] parts = [.. (images ?? []).Select(i => (object)new { inline_data = new { mime_type = i.MediaType, data = i.Base64 } }),
+                          new { text = userPrompt }];
         var request = new
         {
             systemInstruction = new { parts = new[] { new { text = systemPrompt } } },
-            contents          = new[] { new { parts = new[] { new { text = userPrompt } } } },
+            contents          = new[] { new { parts } },
             generationConfig  = new { maxOutputTokens = maxTokens }
         };
         var http = new HttpRequestMessage(HttpMethod.Post, url);
@@ -293,14 +309,17 @@ public sealed class GeminiProvider : IAiProvider
         return http;
     }
 
-    public async Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct)
+    public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
+        GenerateAsync(systemPrompt, userPrompt, maxTokens, [], ct);
+
+    public async Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct)
     {
         if (!HasApiKey) throw ProviderHttp.NoKey(Type, "Gemini");
 
         var context = $"Gemini/{Model}";
         ProviderHttp.LogRequest(context, maxTokens, systemPrompt, userPrompt);
 
-        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: false);
+        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: false, images);
         using var response = await ProviderHttp.SendAsync(_http, Type, context, http, ct);
         await ProviderHttp.ThrowIfFailed(Type, context, "Gemini", response, ct);
 
@@ -316,15 +335,18 @@ public sealed class GeminiProvider : IAiProvider
         return new ProviderResult(text, inTok, outTok, candidate?.FinishReason);
     }
 
+    public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
+        StreamAsync(systemPrompt, userPrompt, maxTokens, [], ct);
+
     public async IAsyncEnumerable<AiChunk> StreamAsync(
-        string systemPrompt, string userPrompt, int maxTokens, [EnumeratorCancellation] CancellationToken ct)
+        string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, [EnumeratorCancellation] CancellationToken ct)
     {
         if (!HasApiKey) throw ProviderHttp.NoKey(Type, "Gemini");
 
         var context = $"Gemini/{Model}";
         ProviderHttp.LogRequest(context, maxTokens, systemPrompt, userPrompt, stream: true);
 
-        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: true);
+        using var http = BuildRequest(systemPrompt, userPrompt, maxTokens, stream: true, images);
         using var response = await ProviderHttp.OpenStreamAsync(_http, Type, context, "Gemini", http, ct);
         using var stream = await response.Content.ReadAsStreamAsync(ct);
 
@@ -402,10 +424,16 @@ public sealed class OpenAiProvider : IAiProvider
     public bool HasApiKey => !string.IsNullOrWhiteSpace(_apiKey);
 
     public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
-        ChatCompletions.GenerateAsync(_http, Type, "OpenAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, ct);
+        ChatCompletions.GenerateAsync(_http, Type, "OpenAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, [], ct);
+
+    public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        ChatCompletions.GenerateAsync(_http, Type, "OpenAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, images, ct);
 
     public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
-        ChatCompletions.StreamAsync(_http, Type, "OpenAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: true, ct);
+        ChatCompletions.StreamAsync(_http, Type, "OpenAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: true, [], ct);
+
+    public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        ChatCompletions.StreamAsync(_http, Type, "OpenAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: true, images, ct);
 }
 
 public sealed class MistralProvider : IAiProvider
@@ -423,11 +451,17 @@ public sealed class MistralProvider : IAiProvider
     public bool HasApiKey => !string.IsNullOrWhiteSpace(_apiKey);
 
     public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
-        ChatCompletions.GenerateAsync(_http, Type, "Mistral", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, ct);
+        ChatCompletions.GenerateAsync(_http, Type, "Mistral", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, [], ct);
+
+    public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        ChatCompletions.GenerateAsync(_http, Type, "Mistral", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, images, ct);
 
     // Mistral reports usage in its last chunk without being asked and rejects unknown fields.
     public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
-        ChatCompletions.StreamAsync(_http, Type, "Mistral", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: false, ct);
+        ChatCompletions.StreamAsync(_http, Type, "Mistral", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: false, [], ct);
+
+    public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        ChatCompletions.StreamAsync(_http, Type, "Mistral", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: false, images, ct);
 }
 
 /// <summary>xAI's Grok models; the API is OpenAI-shaped.</summary>
@@ -446,29 +480,42 @@ public sealed class XAiProvider : IAiProvider
     public bool HasApiKey => !string.IsNullOrWhiteSpace(_apiKey);
 
     public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
-        ChatCompletions.GenerateAsync(_http, Type, "xAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, ct);
+        ChatCompletions.GenerateAsync(_http, Type, "xAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, [], ct);
+
+    public Task<ProviderResult> GenerateAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        ChatCompletions.GenerateAsync(_http, Type, "xAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, images, ct);
 
     public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct) =>
-        ChatCompletions.StreamAsync(_http, Type, "xAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: true, ct);
+        ChatCompletions.StreamAsync(_http, Type, "xAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: true, [], ct);
+
+    public IAsyncEnumerable<AiChunk> StreamAsync(string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct) =>
+        ChatCompletions.StreamAsync(_http, Type, "xAI", ApiUrl, _apiKey, Model, systemPrompt, userPrompt, maxTokens, includeUsageOption: true, images, ct);
 }
 
 /// <summary>OpenAI-style chat-completions calls shared by OpenAI, Mistral and xAI.</summary>
 internal static class ChatCompletions
 {
     private static HttpRequestMessage BuildRequest(
-        string url, string apiKey, string model, string systemPrompt, string userPrompt, int maxTokens, bool stream, bool includeUsageOption)
+        string url, string apiKey, string model, string systemPrompt, string userPrompt, int maxTokens, bool stream, bool includeUsageOption,
+        IReadOnlyList<AiImage> images)
     {
+        // Text alone stays a plain string, as before 1.3.0; with pictures the user message is a
+        // list of parts, the text and then each picture as a data: address.
+        object userContent = images.Count == 0
+            ? userPrompt
+            : new object[] { new { type = "text", text = userPrompt } }
+                .Concat(images.Select(i => (object)new { type = "image_url", image_url = new { url = i.DataUrl } })).ToArray();
         object request = stream && includeUsageOption
             ? new
             {
                 model, max_tokens = maxTokens, stream = true,
                 stream_options = new { include_usage = true },
-                messages = new[] { new { role = "system", content = systemPrompt }, new { role = "user", content = userPrompt } }
+                messages = new object[] { new { role = "system", content = systemPrompt }, new { role = "user", content = userContent } }
             }
             : new
             {
                 model, max_tokens = maxTokens, stream,
-                messages = new[] { new { role = "system", content = systemPrompt }, new { role = "user", content = userPrompt } }
+                messages = new object[] { new { role = "system", content = systemPrompt }, new { role = "user", content = userContent } }
             };
 
         var http = new HttpRequestMessage(HttpMethod.Post, url);
@@ -479,14 +526,14 @@ internal static class ChatCompletions
 
     public static async Task<ProviderResult> GenerateAsync(
         HttpClient client, AiProviderType provider, string vendor, string url, string apiKey, string model,
-        string systemPrompt, string userPrompt, int maxTokens, CancellationToken ct)
+        string systemPrompt, string userPrompt, int maxTokens, IReadOnlyList<AiImage> images, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(apiKey)) throw ProviderHttp.NoKey(provider, vendor);
 
         var context = $"{vendor}/{model}";
         ProviderHttp.LogRequest(context, maxTokens, systemPrompt, userPrompt);
 
-        using var http = BuildRequest(url, apiKey, model, systemPrompt, userPrompt, maxTokens, stream: false, includeUsageOption: false);
+        using var http = BuildRequest(url, apiKey, model, systemPrompt, userPrompt, maxTokens, stream: false, includeUsageOption: false, images);
         using var response = await ProviderHttp.SendAsync(client, provider, context, http, ct);
         await ProviderHttp.ThrowIfFailed(provider, context, vendor, response, ct);
 
@@ -504,14 +551,15 @@ internal static class ChatCompletions
 
     public static async IAsyncEnumerable<AiChunk> StreamAsync(
         HttpClient client, AiProviderType provider, string vendor, string url, string apiKey, string model,
-        string systemPrompt, string userPrompt, int maxTokens, bool includeUsageOption, [EnumeratorCancellation] CancellationToken ct)
+        string systemPrompt, string userPrompt, int maxTokens, bool includeUsageOption, IReadOnlyList<AiImage> images,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(apiKey)) throw ProviderHttp.NoKey(provider, vendor);
 
         var context = $"{vendor}/{model}";
         ProviderHttp.LogRequest(context, maxTokens, systemPrompt, userPrompt, stream: true);
 
-        using var http = BuildRequest(url, apiKey, model, systemPrompt, userPrompt, maxTokens, stream: true, includeUsageOption);
+        using var http = BuildRequest(url, apiKey, model, systemPrompt, userPrompt, maxTokens, stream: true, includeUsageOption, images);
         using var response = await ProviderHttp.OpenStreamAsync(client, provider, context, vendor, http, ct);
         using var stream = await response.Content.ReadAsStreamAsync(ct);
 

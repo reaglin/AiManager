@@ -18,11 +18,14 @@ public sealed class AiRequest
     /// <summary>Free text naming what the call is for ("chapter-summary"). Lands in the log and the usage ledger.</summary>
     public string Purpose { get; init; } = string.Empty;
 
+    /// <summary>Pictures sent with the user prompt, for a model that can see (1.3.0). Empty for text only.</summary>
+    public IReadOnlyList<AiImage> Images { get; init; } = [];
+
     /// <summary>A copy aimed at another provider or model, optionally with the user prompt the author edited.</summary>
     public AiRequest With(AiProviderType provider, string? model = null, string? user = null) => new()
     {
         Provider = provider, Model = model ?? Model, System = System, User = user ?? User,
-        MaxTokens = MaxTokens, Purpose = Purpose
+        MaxTokens = MaxTokens, Purpose = Purpose, Images = Images
     };
 }
 
