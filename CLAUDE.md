@@ -41,7 +41,11 @@ TreatWarningsAsErrors. Fix warnings, never suppress them.
    anywhere; DPAPI calls are guarded by `OperatingSystem.IsWindows()`. UI lives in the two
    toolkit packages and the standalone app.
 4. **Every call is tagged with the app name** (`AiHub.Open("AuthorPlus")`). The log, the usage
-   ledger, per-app defaults and per-app prompt templates all key on it.
+   ledger, per-app defaults and per-app prompt templates all key on it. Since **1.4.1** a program
+   can have its **own model** per provider ("Model for <app>" in both settings windows;
+   `hub.SetAppModel(p, model)` in code): a request without a model uses the program's own, else
+   the model for all programs, else the built-in default. The standalone exe opens as
+   `AiHub.ManagerAppName` ("AiManager") and shows no per-program column.
 5. **Apps consume a versioned package, not a path.** `build/pack.ps1` builds into
    `C:\nuget-local`; each app pins `<PackageReference Include="Eaglin.AiManager" Version="x.y.z" />`.
    Bump the version for any public API change; apps upgrade deliberately.

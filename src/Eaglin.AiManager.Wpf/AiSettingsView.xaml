@@ -38,12 +38,14 @@
                         <ColumnDefinition Width="130"/>    <!-- name -->
                         <ColumnDefinition Width="*"/>      <!-- key -->
                         <ColumnDefinition Width="Auto"/>   <!-- show -->
-                        <ColumnDefinition Width="220"/>    <!-- model -->
+                        <ColumnDefinition Width="220"/>    <!-- model (all programs) -->
+                        <ColumnDefinition x:Name="AppModelColumn" Width="200"/>    <!-- model for this app; 0 in the standalone program -->
                         <ColumnDefinition Width="Auto"/>   <!-- refresh -->
                         <ColumnDefinition Width="Auto"/>   <!-- test -->
                         <ColumnDefinition Width="170"/>    <!-- status -->
                     </Grid.ColumnDefinitions>
                 </Grid>
+                <TextBlock x:Name="AppModelHint" Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource Ai.MutedText}"/>
 
                 <TextBlock Style="{StaticResource Ai.H2}" Text="Defaults"/>
                 <Grid>
@@ -58,10 +60,10 @@
                         <RowDefinition/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Default provider (all apps)"/>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Default provider for all programs"/>
                     <ComboBox  Grid.Row="0" Grid.Column="1" x:Name="DefaultProviderBox" Margin="0,2"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" x:Name="AppDefaultLabel" VerticalAlignment="Center" Text="Default provider for this app"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" x:Name="AppDefaultLabel" VerticalAlignment="Center" Text="Provider for this program"/>
                     <ComboBox  Grid.Row="1" Grid.Column="1" x:Name="AppDefaultProviderBox" Margin="0,2"/>
                     <TextBlock Grid.Row="1" Grid.Column="2" x:Name="AppDefaultHint" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource Ai.MutedText}"/>
 

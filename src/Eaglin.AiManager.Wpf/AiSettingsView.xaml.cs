@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -9,13 +10,15 @@ using Eaglin.AiManager.Legacy;
 namespace Eaglin.AiManager.Wpf;
 
 /// <summary>
-/// The AI Settings surface: one row per provider (key, model, test, catalog refresh), the
-/// default provider (global and, when opened from an app, for that app), the monthly budget,
-/// and legacy key import. Edits live in memory until Save; Revert re-reads the store.
+/// The AI Settings surface: one row per provider (key, model for all programs and, when opened
+/// from an app, that app's own model; test, catalog refresh), the default provider (global and,
+/// when opened from an app, for that app), the monthly budget, and legacy key import. Edits live
+/// in memory until Save; Revert re-reads the store.
 /// </summary>
 public partial class AiSettingsView : UserControl
 {
-    private const string UseGlobal = "(use the global default)";
+    private const string UseGlobal = "Same as all programs";
+    private const string SameAsAll = "Same as all programs";
 
     private readonly AiHub _hub;
     private readonly List<Row> _rows = new();
@@ -31,6 +34,8 @@ public partial class AiSettingsView : UserControl
         public required TextBox KeyPlain;
         public required ToggleButton Show;
         public required ComboBox Model;
+        /// <summary>"Model for &lt;app&gt;"; null in the standalone program.</summary>
+        public ComboBox? AppModel;
         public required Button Refresh;
         public required Button Test;
         public required TextBlock Status;
@@ -50,9 +55,19 @@ public partial class AiSettingsView : UserControl
 
     // ── Layout ────────────────────────────────────────────────────────────────
 
+    private bool PerApp => _hub.IsOpenedForAnApp;
+
     private void BuildRows()
     {
         int r = 0;
+        if (!PerApp) AppModelColumn.Width = new GridLength(0);
+
+        ProviderGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Header("Provider", 1); Header("API key", 2);
+        Header(PerApp ? "Model for all programs" : "Model", 4);
+        if (PerApp) Header($"Model for {_hub.App}", 5);
+        r++;
+
         foreach (var p in AiProviderRouter.AllProviders)
         {
             ProviderGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -62,12 +77,20 @@ public partial class AiSettingsView : UserControl
             var key = new PasswordBox { Margin = new Thickness(0, 3, 0, 3), VerticalContentAlignment = VerticalAlignment.Center };
             var keyPlain = new TextBox { Margin = new Thickness(0, 3, 0, 3), Visibility = Visibility.Collapsed, VerticalContentAlignment = VerticalAlignment.Center };
             var show = new ToggleButton { Content = "Show", Margin = new Thickness(6, 0, 10, 0), Padding = new Thickness(6, 1, 6, 1) };
-            var model = new ComboBox { IsEditable = true, Margin = new Thickness(0, 3, 0, 3), ToolTip = "Model id. Pick from the list or type any id the vendor accepts." };
+            var model = new ComboBox { IsEditable = true, Margin = new Thickness(0, 3, 0, 3),
+                                       ToolTip = PerApp ? "Model id every program uses unless it has its own choice. Pick from the list or type any id the vendor accepts."
+                                                        : "Model id. Pick from the list or type any id the vendor accepts." };
+            AutomationProperties.SetName(model, $"{AiHub.DisplayName(p)} model{(PerApp ? " for all programs" : "")}");
+            var appModel = PerApp
+                ? new ComboBox { Margin = new Thickness(6, 3, 0, 3),
+                                 ToolTip = $"Which model {_hub.App} uses. \"{SameAsAll}\" follows the box to the left. A model picked here is for {_hub.App} only, and stays fixed for it even if the box to the left changes later." }
+                : null;
+            if (appModel is not null) AutomationProperties.SetName(appModel, $"{AiHub.DisplayName(p)} model for {_hub.App}");
             var refresh = new Button { Content = "Models", ToolTip = "Fetch the vendor's current model list into the drop-down (uses the key above).", Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(4, 0, 0, 0) };
-            var test = new Button { Content = "Test", ToolTip = "Send a one-word prompt with this key and model.", Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(4, 0, 8, 0) };
+            var test = new Button { Content = "Test", ToolTip = PerApp ? $"Send a one-word prompt with this key and the model {_hub.App} uses." : "Send a one-word prompt with this key and model.", Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(4, 0, 8, 0) };
             var status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = (Brush)FindResource("Ai.Muted") };
 
-            var row = new Row { Provider = p, Dot = dot, Key = key, KeyPlain = keyPlain, Show = show, Model = model, Refresh = refresh, Test = test, Status = status };
+            var row = new Row { Provider = p, Dot = dot, Key = key, KeyPlain = keyPlain, Show = show, Model = model, AppModel = appModel, Refresh = refresh, Test = test, Status = status };
             _rows.Add(row);
 
             show.Checked   += (_, _) => { keyPlain.Text = key.Password; key.Visibility = Visibility.Collapsed; keyPlain.Visibility = Visibility.Visible; };
@@ -78,15 +101,24 @@ public partial class AiSettingsView : UserControl
             test.Click    += async (_, _) => await TestAsync(row);
 
             Place(dot, r, 0); Place(name, r, 1); Place(key, r, 2); Place(keyPlain, r, 2); Place(show, r, 3);
-            Place(model, r, 4); Place(refresh, r, 5); Place(test, r, 6); Place(status, r, 7);
+            Place(model, r, 4); if (appModel is not null) Place(appModel, r, 5);
+            Place(refresh, r, 6); Place(test, r, 7); Place(status, r, 8);
             r++;
         }
+
+        AppModelHint.Text = PerApp
+            ? $"Model for {_hub.App}: \"{SameAsAll}\" uses the model to its left. Pick another model to have {_hub.App} use it while the other programs keep theirs. It takes effect when you press Save."
+            : string.Empty;
+        AppModelHint.Visibility = PerApp ? Visibility.Visible : Visibility.Collapsed;
 
         void Place(UIElement e, int row, int col)
         {
             Grid.SetRow(e, row); Grid.SetColumn(e, col);
             ProviderGrid.Children.Add(e);
         }
+
+        void Header(string text, int col) =>
+            Place(new TextBlock { Text = text, Foreground = (Brush)FindResource("Ai.Muted"), Margin = new Thickness(col == 5 ? 6 : 0, 0, 0, 2) }, 0, col);
     }
 
     // ── Load / Save ───────────────────────────────────────────────────────────
@@ -99,6 +131,7 @@ public partial class AiSettingsView : UserControl
             row.SetKey(_hub.Credentials.KeyFor(row.Provider));
             FillModels(row, _hub.Models.Cached(row.Provider)?.Models.Select(m => m.Id));
             row.Model.Text = _hub.Settings.ModelFor(row.Provider) ?? AiProviderRouter.DefaultModels[row.Provider];
+            SelectAppModel(row, _hub.AppModel(row.Provider));
             row.Status.Text = _hub.Credentials.EntryFor(row.Provider) is { } e
                 ? $"saved {e.UpdatedUtc:yyyy-MM-dd} by {e.UpdatedBy}" : "no key";
             UpdateDot(row);
@@ -113,12 +146,12 @@ public partial class AiSettingsView : UserControl
         var appDefault = _hub.Settings.Apps.TryGetValue(_hub.App, out var a) ? a.DefaultProvider : null;
         AppDefaultProviderBox.SelectedItem = appDefault is { } ad && ad != AiProviderType.None
             ? appItems.OfType<ProviderItem>().First(i => i.Provider == ad) : UseGlobal;
-        AppDefaultLabel.Text = $"Default provider for {_hub.App}";
-        AppDefaultHint.Text  = $"Only {_hub.App} is affected; other apps keep the global default.";
+        AppDefaultLabel.Text = $"Provider for {_hub.App}";
+        AppDefaultHint.Text  = $"Only {_hub.App}. \"{UseGlobal}\" follows the setting above.";
 
         BudgetBox.Text = _hub.Settings.MonthlyBudgetUsd is { } b ? b.ToString("0.##", CultureInfo.InvariantCulture) : string.Empty;
         var spent = _hub.Usage.SpentThisMonth();
-        PathText.Text  = $"Spent this month, all apps: ${spent:0.00} (estimated from list prices)   ·   Store: {_hub.Root}";
+        PathText.Text  = $"Spent this month, all programs: ${spent:0.00} (estimated from list prices)   ·   Store: {_hub.Root}";
         FooterStatus.Text = string.Empty;
     }
 
@@ -129,7 +162,30 @@ public partial class AiSettingsView : UserControl
         var current = row.Model.Text;
         row.Model.ItemsSource = ids;
         if (!string.IsNullOrWhiteSpace(current)) row.Model.Text = current;
+
+        if (row.AppModel is not null)
+        {
+            var chosen = AppModelOf(row);
+            row.AppModel.ItemsSource = new List<string> { SameAsAll }.Concat(ids).ToList();
+            SelectAppModel(row, chosen);
+        }
     }
+
+    /// <summary>Selects a model in "Model for &lt;app&gt;" (null = Same as all programs), adding it to the list if it is not there.</summary>
+    private static void SelectAppModel(Row row, string? model)
+    {
+        if (row.AppModel is not { } box) return;
+        var items = (box.ItemsSource as IEnumerable<string>)?.ToList() ?? new List<string> { SameAsAll };
+        if (string.IsNullOrWhiteSpace(model)) { box.ItemsSource = items; box.SelectedIndex = 0; return; }
+        var i = items.FindIndex(s => string.Equals(s, model, StringComparison.OrdinalIgnoreCase));
+        if (i <= 0) { items.Add(model); i = items.Count - 1; }
+        box.ItemsSource = items;
+        box.SelectedIndex = i;
+    }
+
+    /// <summary>What "Model for &lt;app&gt;" holds: a model id, or null for Same as all programs.</summary>
+    private static string? AppModelOf(Row row) =>
+        row.AppModel?.SelectedIndex is > 0 ? row.AppModel.SelectedItem as string : null;
 
     private void UpdateDot(Row row)
     {
@@ -164,12 +220,15 @@ public partial class AiSettingsView : UserControl
 
         ApplyKeysInMemory();
         foreach (var row in _rows)
+        {
             _hub.Settings.SetModel(row.Provider, row.Model.Text);
+            if (row.AppModel is not null) _hub.Settings.SetAppModel(_hub.App, row.Provider, AppModelOf(row));
+        }
 
         if (DefaultProviderBox.SelectedItem is ProviderItem gp) _hub.Settings.DefaultProvider = gp.Provider;
         var app = _hub.Settings.ForApp(_hub.App);
         app.DefaultProvider = AppDefaultProviderBox.SelectedItem is ProviderItem ap ? ap.Provider : null;
-        if (app.DefaultProvider is null && app.Models.Count == 0) _hub.Settings.Apps.Remove(_hub.App);
+        if (app.IsEmpty) _hub.Settings.Apps.Remove(_hub.App);
         _hub.Settings.MonthlyBudgetUsd = budget;
 
         try
@@ -209,13 +268,13 @@ public partial class AiSettingsView : UserControl
             var r = await _hub.CompleteAsync(new AiRequest
             {
                 Provider  = row.Provider,
-                Model     = row.Model.Text,
+                Model     = AppModelOf(row) ?? row.Model.Text,   // the model this program will actually use
                 System    = "You are a connection test. Reply with exactly the word OK and nothing else.",
                 User      = "Connection test.",
                 MaxTokens = 16,
                 Purpose   = "connection-test"
             });
-            row.Status.Text = $"OK · {r.Elapsed.TotalSeconds:0.0}s · {r.Model}";
+            row.Status.Text = $"OK · {r.Elapsed.TotalSeconds:0.0}s · {r.Model}{(AppModelOf(row) is not null ? $" (for {_hub.App})" : "")}";
             row.Status.Foreground = (Brush)FindResource("Ai.Ok");
             row.Dot.Fill = (Brush)FindResource("Ai.Ok");
             row.Dot.ToolTip = "Tested OK";
@@ -280,6 +339,13 @@ public partial class AiSettingsView : UserControl
         }
         FooterStatus.Text = n == 0 ? "Nothing to import: every provider found already has a key." : $"Imported {n} key(s) — click Save to keep them.";
     }
+
+    // ── Test seams ────────────────────────────────────────────────────────────
+
+    internal bool ShowsAppModels => _rows.Count > 0 && _rows.All(r => r.AppModel is not null);
+    internal string? AppModelText(AiProviderType p) => AppModelOf(_rows.First(r => r.Provider == p));
+    internal void PickAppModel(AiProviderType p, string? model) => SelectAppModel(_rows.First(r => r.Provider == p), model);
+    internal void SaveForTests() => Save_Click(this, new RoutedEventArgs());
 
     private sealed record ProviderItem(AiProviderType Provider)
     {

@@ -11,6 +11,17 @@ internal sealed class SettingsInput
 {
     public Dictionary<AiProviderType, string> Keys   { get; } = new();
     public Dictionary<AiProviderType, string> Models { get; } = new();
+    /// <summary>
+    /// Providers whose model box the user picked from or typed in. Their model is saved even when
+    /// it is the built-in default: choosing the model already shown must stick. A box nobody
+    /// touched still leaves the built-in default unpinned, so it follows AI Manager's updates.
+    /// </summary>
+    public HashSet<AiProviderType> ModelsChosen { get; } = new();
+    /// <summary>
+    /// "Model for &lt;app&gt;" per provider: a model id, or null for "Same as all programs".
+    /// A provider left out is not changed (the form leaves it empty when it shows no such column).
+    /// </summary>
+    public Dictionary<AiProviderType, string?> AppModels { get; } = new();
     public AiProviderType DefaultProvider { get; set; } = AiProviderType.Claude;
     /// <summary>null = this app follows the default for all programs.</summary>
     public AiProviderType? AppDefaultProvider { get; set; }
@@ -46,6 +57,12 @@ internal sealed class AiSettingsSession
 
     public string ModelFor(AiProviderType p) =>
         Hub.Settings.ModelFor(p) ?? AiProviderRouter.DefaultModels[p];
+
+    /// <summary>True when the window was opened for a program, so it offers "Model for &lt;app&gt;".</summary>
+    public bool ShowsAppModels => Hub.IsOpenedForAnApp;
+
+    /// <summary>This program's own model for a provider, or null for "Same as all programs".</summary>
+    public string? AppModelFor(AiProviderType p) => Hub.AppModel(p);
 
     /// <summary>The model drop-down: the built-in names first, then whatever the vendor listed last time.</summary>
     public IReadOnlyList<string> ModelChoices(AiProviderType p, IEnumerable<string>? fetched = null)
@@ -108,12 +125,19 @@ internal sealed class AiSettingsSession
         ArgumentNullException.ThrowIfNull(input);
         ApplyKeys(input.Keys);
         foreach (var (p, model) in input.Models)
-            Hub.Settings.SetModel(p, string.Equals(model?.Trim(), AiProviderRouter.DefaultModels[p], StringComparison.Ordinal) && Hub.Settings.ModelFor(p) is null ? null : model);
+        {
+            var unpinnedDefault = !input.ModelsChosen.Contains(p)
+                && string.Equals(model?.Trim(), AiProviderRouter.DefaultModels[p], StringComparison.Ordinal)
+                && Hub.Settings.ModelFor(p) is null;
+            Hub.Settings.SetModel(p, unpinnedDefault ? null : model);
+        }
+        foreach (var (p, model) in input.AppModels)
+            Hub.Settings.SetAppModel(App, p, model);
 
         Hub.Settings.DefaultProvider = input.DefaultProvider == AiProviderType.None ? AiProviderType.Claude : input.DefaultProvider;
         var app = Hub.Settings.ForApp(App);
         app.DefaultProvider = input.AppDefaultProvider;
-        if (app.DefaultProvider is null && app.Models.Count == 0) Hub.Settings.Apps.Remove(App);
+        if (app.IsEmpty) Hub.Settings.Apps.Remove(App);
         Hub.Settings.MonthlyBudgetUsd = input.MonthlyBudgetUsd;
 
         Hub.Credentials.Save();

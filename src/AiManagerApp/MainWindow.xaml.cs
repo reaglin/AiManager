@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _hub = AiHub.Open("AiManager");
+        _hub = AiHub.Open(AiHub.ManagerAppName);
         _hub.Prompts.RegisterDefaults(new[]
         {
             new PromptTemplate("try-it", "You are a helpful assistant. Answer plainly.", "{text}", "The prompt behind the Try it tab.", 2000)

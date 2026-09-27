@@ -21,6 +21,12 @@ public sealed record BudgetStatus(double SpentUsd, double BudgetUsd, string Mont
 /// </summary>
 public sealed class AiHub
 {
+    /// <summary>
+    /// The name the standalone AI Manager program opens with. A hub opened under this name is not
+    /// "opened for an app", so the settings windows show no per-program choices.
+    /// </summary>
+    public const string ManagerAppName = "AiManager";
+
     public string App  { get; }
     public string Root { get; }
 
@@ -82,7 +88,47 @@ public sealed class AiHub
 
     public AiProviderType DefaultProvider => AiSettingsStore.ResolveProvider(Settings, App);
 
+    /// <summary>
+    /// The model a request to <paramref name="provider"/> uses when it names none: this program's
+    /// own choice ("Model for &lt;app&gt;"), else the model for all programs, else the built-in default.
+    /// </summary>
     public string DefaultModel(AiProviderType provider) => AiSettingsStore.ResolveModel(Settings, App, provider);
+
+    /// <summary>Where <see cref="DefaultModel"/>'s answer comes from: this program, all programs, or the built-in default.</summary>
+    public ModelSource DefaultModelSource(AiProviderType provider) => AiSettingsStore.ResolveModelSource(Settings, App, provider);
+
+    /// <summary>This program's own model for a provider, or null when it uses the model for all programs.</summary>
+    public string? AppModel(AiProviderType provider) => Settings.AppModelFor(App, provider);
+
+    /// <summary>True unless this hub belongs to the standalone AI Manager program (see <see cref="ManagerAppName"/>).</summary>
+    public bool IsOpenedForAnApp => !string.Equals(App, ManagerAppName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sets (or, with null, clears) this program's own model for a provider and saves it at once:
+    /// the way a program changes its choice in code (for example a one-time migration). It
+    /// re-reads settings.json first so a change another program just saved is kept, and changes
+    /// nothing else. When the file exists but cannot be read, or cannot be written, nothing is
+    /// changed and it returns false (the reason is in the activity log). An explicit model sticks
+    /// even when it equals the model for all programs or the built-in default.
+    /// </summary>
+    public bool SetAppModel(AiProviderType provider, string? model)
+    {
+        if (provider == AiProviderType.None) throw new ArgumentOutOfRangeException(nameof(provider), "Choose a provider.");
+        if (!SettingsStore.TryLoadExisting(out var fresh)) return false;
+        fresh.SetAppModel(App, provider, model);
+        try
+        {
+            SettingsStore.Save(fresh);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ActivityLog.Error("AiHub", $"Could not save {SettingsStore.Path}; {App}'s model for {provider} not changed", ex);
+            return false;
+        }
+        Settings = fresh;
+        ActivityLog.Info("AiHub", $"{App}'s own model for {provider}: {(string.IsNullOrWhiteSpace(model) ? "(same as all programs)" : model.Trim())}");
+        return true;
+    }
 
     /// <summary>True when the given provider (null = the app default) has a stored key.</summary>
     public bool IsAvailable(AiProviderType? provider = null) => Credentials.HasKey(provider ?? DefaultProvider);

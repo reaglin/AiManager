@@ -5,8 +5,9 @@ namespace Eaglin.AiManager.WinForms;
 
 /// <summary>
 /// AI Settings as a WinForms dialog — the counterpart of <c>Eaglin.AiManager.Wpf.AiSettingsWindow</c>.
-/// One row per provider (the key, masked with Show; a status dot; Get a key; the model; Models;
-/// Test), the default provider for all programs and for the calling app, the monthly spending
+/// One row per provider (the key, masked with Show; a status dot; Get a key; the model for all
+/// programs and, when opened for a program, that program's own model; Models; Test), the default
+/// provider for all programs and for the calling app, the monthly spending
 /// warning, and Import keys from other programs. Nothing is written until Save; Cancel (or the
 /// window's close box) throws the edits away, including a key that was only tested.
 /// <code>using var f = new AiSettingsForm(hub); if (f.ShowDialog(this) == DialogResult.OK) …</code>
@@ -45,10 +46,14 @@ public sealed class AiSettingsForm : ScaledForm
         public required TextBox Key;
         public required CheckBox Show;
         public required ComboBox Model;
+        /// <summary>"Model for &lt;app&gt;"; null when the window was not opened for a program.</summary>
+        public ComboBox? AppModel;
         public required Button Models;
         public required Button Test;
         public required Label Status;
         public bool Tested;
+        /// <summary>The user picked from, or typed in, the model box: save it even if it is the built-in default.</summary>
+        public bool ModelChosen;
     }
 
     private sealed record ProviderItem(AiProviderType Provider)
@@ -69,8 +74,8 @@ public sealed class AiSettingsForm : ScaledForm
 
         Text = $"AI Settings — {app}";
         AccessibleName = "AI Settings";
-        ClientSize = new Size(1000, 720);
-        MinimumSize = new Size(860, 520);
+        ClientSize = new Size(_session.ShowsAppModels ? 1180 : 1000, 720);
+        MinimumSize = new Size(_session.ShowsAppModels ? 1020 : 860, 520);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = true;
         MinimizeBox = false;
@@ -102,6 +107,10 @@ public sealed class AiSettingsForm : ScaledForm
         stack.Controls.Add(Ui.Heading("Providers"));
         _providers = BuildProviderTable();
         stack.Controls.Add(_providers);
+        if (_session.ShowsAppModels)
+            stack.Controls.Add(new WrapLabel(
+                $"Model for {app}: \"Same as all programs\" uses the model to its left. Pick another model to have {app} use it while the other programs keep theirs. It takes effect when you press Save.",
+                muted: true));
 
         stack.Controls.Add(Ui.Heading("Which provider to use"));
         var defaults = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, Margin = new Padding(0) };
@@ -182,19 +191,25 @@ public sealed class AiSettingsForm : ScaledForm
 
     private TableLayoutPanel BuildProviderTable()
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 7, Margin = new Padding(0) };
+        var app = _session.App;
+        var perApp = _session.ShowsAppModels;
+        var cModels = perApp ? 6 : 5;   // Models and Test move right when "Model for <app>" is shown
+        var cTest = cModels + 1;
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = cTest + 1, Margin = new Padding(0) };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));    // dot
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));   // name / Get a key
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));    // key / status
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));        // Show
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230));   // model
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, perApp ? 210 : 230));   // model (all programs)
+        if (perApp) t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));      // model for <app>
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));        // Models
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));        // Test
 
         var r = 0;
         t.Controls.Add(Ui.Plain("Provider", muted: true), 1, r);
         t.Controls.Add(Ui.Plain("API key", muted: true), 2, r);
-        t.Controls.Add(Ui.Plain("Model (which AI to ask)", muted: true), 4, r);
+        t.Controls.Add(Ui.Plain(perApp ? "Model for all programs" : "Model (which AI to ask)", muted: true), 4, r);
+        if (perApp) t.Controls.Add(Ui.Plain($"Model for {app}", muted: true), 5, r);
         r++;
 
         foreach (var p in AiProviderRouter.AllProviders)
@@ -204,16 +219,21 @@ public sealed class AiSettingsForm : ScaledForm
             var label = new Label { Text = name, AutoSize = true, Anchor = AnchorStyles.Left, Font = new Font("Segoe UI Semibold", 9f), ForeColor = Ui.Text, UseMnemonic = false };
             var key = new TextBox { UseSystemPasswordChar = true, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = $"{name} API key", Margin = new Padding(0, 4, 4, 2) };
             var show = new CheckBox { Text = "Show", AutoSize = true, Anchor = AnchorStyles.Left, AccessibleName = $"Show the {name} key", Margin = new Padding(4, 4, 12, 2) };
-            var model = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = $"{name} model", Margin = new Padding(0, 4, 4, 2) };
+            var model = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = perApp ? $"{name} model for all programs" : $"{name} model", Margin = new Padding(0, 4, 4, 2) };
+            var appModel = perApp
+                ? new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = $"{name} model for {app}", Margin = new Padding(0, 4, 4, 2) }
+                : null;
             var models = Ui.Button("Models", $"Asks {name} for its current list of models (needs the key).");
-            var test = Ui.Button("Test", $"Sends {name} a one-word question with this key and model, to check they work. It costs a fraction of a cent.");
+            var test = Ui.Button("Test", perApp
+                ? $"Sends {name} a one-word question with this key and the model {app} uses, to check they work. It costs a fraction of a cent."
+                : $"Sends {name} a one-word question with this key and model, to check they work. It costs a fraction of a cent.");
             models.MinimumSize = test.MinimumSize = new Size(70, 26);
             var link = new LinkLabel { Text = "Get a key", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(0, 0, 0, 10), AccessibleName = $"Get a key from {name} (opens the website)", LinkColor = Ui.Accent };
             var status = new Label { AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, ForeColor = Ui.Muted, Margin = new Padding(0, 0, 0, 10), UseMnemonic = false };
 
             models.AccessibleName = $"List {name} models";
             test.AccessibleName = $"Test the {name} key";
-            var row = new Row { Provider = p, Dot = dot, Key = key, Show = show, Model = model, Models = models, Test = test, Status = status };
+            var row = new Row { Provider = p, Dot = dot, Key = key, Show = show, Model = model, AppModel = appModel, Models = models, Test = test, Status = status };
             _rows.Add(row);
 
             show.CheckedChanged += (_, _) => key.UseSystemPasswordChar = !show.Checked;
@@ -226,6 +246,8 @@ public sealed class AiSettingsForm : ScaledForm
                     ? "No key. Get one from the link on the left and paste it into the box, or leave it empty if you do not use this provider."
                     : "Key changed. Press Test to check it, then Save.", null);
             };
+            model.SelectionChangeCommitted += (_, _) => { if (!_loading) row.ModelChosen = true; };
+            model.TextUpdate += (_, _) => { if (!_loading) row.ModelChosen = true; };
             models.Click += async (_, _) => await RefreshModelsAsync(row);
             test.Click += async (_, _) => await TestAsync(row);
             var url = AiProviderRouter.KeyPages[p];
@@ -233,7 +255,11 @@ public sealed class AiSettingsForm : ScaledForm
 
             _tips.SetToolTip(link, $"Opens {url} in your web browser. Sign in, create a key, copy it and paste it into the box.");
             _tips.SetToolTip(key, $"Paste your {name} API key here. It is hidden unless Show is ticked.");
-            _tips.SetToolTip(model, "Which of the provider's AIs to ask. Pick one from the list, or type any name the provider accepts.");
+            _tips.SetToolTip(model, perApp
+                ? $"Which of the provider's AIs every program asks, unless it has its own choice. Pick one from the list, or type any name the provider accepts."
+                : "Which of the provider's AIs to ask. Pick one from the list, or type any name the provider accepts.");
+            if (appModel is not null)
+                _tips.SetToolTip(appModel, $"Which of the provider's AIs {app} asks. \"Same as all programs\" follows the box to the left. A model picked here is for {app} only, and stays fixed for it even if the box to the left changes later.");
             _tips.SetToolTip(models, models.AccessibleDescription);
             _tips.SetToolTip(test, test.AccessibleDescription);
 
@@ -242,13 +268,14 @@ public sealed class AiSettingsForm : ScaledForm
             t.Controls.Add(key, 2, r);
             t.Controls.Add(show, 3, r);
             t.Controls.Add(model, 4, r);
-            t.Controls.Add(models, 5, r);
-            t.Controls.Add(test, 6, r);
+            if (appModel is not null) t.Controls.Add(appModel, 5, r);
+            t.Controls.Add(models, cModels, r);
+            t.Controls.Add(test, cTest, r);
             r++;
             t.Controls.Add(link, 1, r);
             t.Controls.Add(status, 2, r);
-            t.SetColumnSpan(status, 5);
-            _fitted.Add((t, status, 2, 5));
+            t.SetColumnSpan(status, cTest - 1);
+            _fitted.Add((t, status, 2, cTest - 1));
             r++;
         }
 
@@ -284,7 +311,11 @@ public sealed class AiSettingsForm : ScaledForm
 
     protected override void AfterScale()
     {
-        foreach (var row in _rows) FitDropDown(row.Model);
+        foreach (var row in _rows)
+        {
+            FitDropDown(row.Model);
+            if (row.AppModel is not null) FitDropDown(row.AppModel);
+        }
         FitDropDown(_defaultProvider);
         FitDropDown(_appProvider);
         FitLabels();
@@ -318,7 +349,9 @@ public sealed class AiSettingsForm : ScaledForm
             row.Key.Text = _session.KeyFor(row.Provider);
             FillModels(row, _session.ModelChoices(row.Provider));
             row.Model.Text = _session.ModelFor(row.Provider);
+            SelectAppModel(row, _session.AppModelFor(row.Provider));
             row.Tested = false;
+            row.ModelChosen = false;
             SetStatus(row, _session.SavedNote(row.Provider), null);
             UpdateDot(row, null);
         }
@@ -347,13 +380,38 @@ public sealed class AiSettingsForm : ScaledForm
         row.Model.Items.AddRange(ids.Cast<object>().ToArray());
         row.Model.EndUpdate();
         if (!string.IsNullOrWhiteSpace(current)) row.Model.Text = current;
+
+        if (row.AppModel is not null)
+        {
+            var chosen = AppModelOf(row);
+            row.AppModel.BeginUpdate();
+            row.AppModel.Items.Clear();
+            row.AppModel.Items.Add(new SameAsAll());
+            row.AppModel.Items.AddRange(ids.Cast<object>().ToArray());
+            row.AppModel.EndUpdate();
+            SelectAppModel(row, chosen);
+        }
     }
+
+    /// <summary>Selects a model in "Model for &lt;app&gt;" (null = Same as all programs), adding it to the list if it is not there.</summary>
+    private static void SelectAppModel(Row row, string? model)
+    {
+        if (row.AppModel is not { } box) return;
+        if (box.Items.Count == 0) box.Items.Add(new SameAsAll());
+        if (string.IsNullOrWhiteSpace(model)) { box.SelectedIndex = 0; return; }
+        var i = box.Items.Cast<object>().ToList().FindIndex(o => o is string s && string.Equals(s, model, StringComparison.OrdinalIgnoreCase));
+        if (i < 0) i = box.Items.Add(model);
+        box.SelectedIndex = i;
+    }
+
+    /// <summary>What "Model for &lt;app&gt;" holds: a model id, or null for Same as all programs.</summary>
+    private static string? AppModelOf(Row row) => row.AppModel?.SelectedItem as string;
 
     private Dictionary<AiProviderType, string> TypedKeys() =>
         _rows.ToDictionary(r => r.Provider, r => r.Key.Text.Trim());
 
     private string Snapshot() =>
-        string.Join("\u001f", _rows.Select(r => r.Key.Text.Trim() + "\u001e" + r.Model.Text.Trim()))
+        string.Join("\u001f", _rows.Select(r => r.Key.Text.Trim() + "\u001e" + r.Model.Text.Trim() + "\u001e" + AppModelOf(r)))
         + "\u001f" + _defaultProvider.SelectedIndex + "\u001f" + _appProvider.SelectedIndex + "\u001f" + _budget.Text.Trim();
 
     private bool IsDirty => !_saved && Snapshot() != _snapshot;
@@ -380,6 +438,8 @@ public sealed class AiSettingsForm : ScaledForm
         {
             input.Keys[row.Provider] = row.Key.Text;
             input.Models[row.Provider] = row.Model.Text;
+            if (row.ModelChosen) input.ModelsChosen.Add(row.Provider);
+            if (row.AppModel is not null) input.AppModels[row.Provider] = AppModelOf(row);
         }
 
         var chosen = input.AppDefaultProvider ?? input.DefaultProvider;
@@ -511,7 +571,11 @@ public sealed class AiSettingsForm : ScaledForm
         SetStatus(row, $"Testing — asking {AiHub.DisplayName(row.Provider)} a one-word question…", null);
         try
         {
-            var check = await _session.TestAsync(row.Provider, row.Key.Text, row.Model.Text, _closing.Token);
+            // Test the model this program will actually use: its own choice, else the one for all programs.
+            var own = AppModelOf(row);
+            var check = await _session.TestAsync(row.Provider, row.Key.Text, own ?? row.Model.Text, _closing.Token);
+            if (check.Ok && own is not null)
+                check = check with { Message = check.Message.Replace($"using {own}.", $"using {own}, the model for {_session.App}.", StringComparison.Ordinal) };
             if (IsDisposed) return;
             SetStatus(row, check.Message, check.Ok);
             row.Tested = check.Ok;
@@ -598,6 +662,20 @@ public sealed class AiSettingsForm : ScaledForm
     internal bool KeyMasked(AiProviderType p) => _rows.First(r => r.Provider == p).Key.UseSystemPasswordChar;
     internal void SetShow(AiProviderType p, bool show) => _rows.First(r => r.Provider == p).Show.Checked = show;
     internal int ProviderRowCount => _rows.Count;
+    internal bool ShowsAppModels => _rows.All(r => r.AppModel is not null) && _rows.Count > 0;
+    internal string? AppModelText(AiProviderType p) => AppModelOf(_rows.First(r => r.Provider == p));
+    internal IReadOnlyList<string> AppModelChoices(AiProviderType p) =>
+        _rows.First(r => r.Provider == p).AppModel?.Items.Cast<object>().Select(o => o.ToString() ?? string.Empty).ToList() ?? new List<string>();
+    /// <summary>As if the user picked from "Model for &lt;app&gt;" (null = Same as all programs).</summary>
+    internal void PickAppModel(AiProviderType p, string? model) => SelectAppModel(_rows.First(r => r.Provider == p), model);
+    /// <summary>As if the user picked <paramref name="model"/> from the model box for all programs.</summary>
+    internal void PickModel(AiProviderType p, string model)
+    {
+        var row = _rows.First(r => r.Provider == p);
+        row.Model.Text = model;
+        row.ModelChosen = true;
+    }
+    internal bool SaveForTests() => SaveAndClose();
     internal string FooterText => _footer.Text;
     internal bool Dirty => IsDirty;
     internal Task TestForTests(AiProviderType p) => TestAsync(_rows.First(r => r.Provider == p));

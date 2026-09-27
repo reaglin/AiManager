@@ -11,10 +11,10 @@ public sealed class AiSettingsWindow : Window
     {
         View = new AiSettingsView(hub);
         View.Saved += (_, _) => { DialogResult = true; Close(); };
-        Title = "AI Settings";
+        Title = hub.IsOpenedForAnApp ? $"AI Settings — {hub.App}" : "AI Settings";
         Content = View;
-        Width = 900; Height = 520;
-        MinWidth = 800; MinHeight = 460;
+        Width = hub.IsOpenedForAnApp ? 1100 : 900; Height = 540;
+        MinWidth = hub.IsOpenedForAnApp ? 1000 : 800; MinHeight = 460;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
     }

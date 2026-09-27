@@ -107,6 +107,18 @@ Documents\AiManager\
 Per-app entries override global ones; anything missing falls through. Apps never write the
 global section except through the settings UI.
 
+**A program's own model (1.4.1, Ron 2026-09-27).** `Apps.<App>.Models.<Provider>` is that
+program's own model for a provider, shown in both settings windows as **"Model for <app>"**
+beside the model for all programs ("Same as all programs" = no entry). A request that names no
+model uses: the program's own model, else the model for all programs, else the built-in default;
+a request that names its model keeps it. The shape was already in the file (and read by 1.0–1.4),
+so older versions honour an override written by 1.4.1. An explicit per-app model is stored as
+given even when it equals the built-in default; in the WinForms window a model for all programs
+that the user *picked* is stored too (an untouched box still leaves the built-in default unpinned,
+so it follows AI Manager's updates). Keys a newer version writes (`[JsonExtensionData]`, at the
+root and in each app entry) survive a save by an older one from 1.4.1 on. A program sets its own
+model in code with `hub.SetAppModel(provider, model)` (see §5).
+
 **Encryption:** `ProtectedData.Protect(utf8, null, DataProtectionScope.CurrentUser)` → Base64,
 exactly PreseMaker's scheme, so its blobs (and CIATLE's, once CIATLE encrypts) import as-is.
 
@@ -157,6 +169,15 @@ AiResponse r3 = await ai.RunTemplateAsync("chapter-summary", new { title, text }
 UsageSummary u = ai.Usage.Summarize(month: DateTime.Now, app: "AuthorPlus");  // totals, by app/model/day
 ai.Usage.Recent(50)                                    // for the dashboard's call list
 ai.BudgetExceeded += s => ...;                         // once per month when spend passes settings.MonthlyBudgetUsd
+
+// a program's own model (1.4.1): "Model for <app>" in AI Settings
+ai.DefaultModel(AiProviderType.Claude)                 // what a request without a model uses
+ai.DefaultModelSource(AiProviderType.Claude)           // ModelSource.App | AllPrograms | BuiltIn
+ai.AppModel(AiProviderType.Claude)                     // this program's own model, or null
+bool ok = ai.SetAppModel(AiProviderType.Claude, "claude-sonnet-4-6");   // re-reads settings.json, sets, saves;
+                                                       // null clears; false (nothing written) if the file cannot be read
+ai.Settings.AppModelFor("AuthorPlus", p) / ai.Settings.SetAppModel("AuthorPlus", p, m)   // in memory, for a settings UI
+ai.IsOpenedForAnApp                                    // false for the standalone program (AiHub.ManagerAppName)
 
 // model catalog
 ModelList models = await ai.Models.ListAsync(AiProviderType.Claude, refresh: false, ct);   // .Models, .FetchedUtc, .FromFallback

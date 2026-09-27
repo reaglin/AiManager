@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- net10.0 runs the library tests anywhere (the library has no UI); net10.0-windows runs
-         them again and adds the WinForms package's tests (the WinForms/ folder). -->
+         them again and adds the WinForms and WPF packages' tests (the WinForms/ and Wpf/ folders). -->
     <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <RootNamespace>Eaglin.AiManager.Tests</RootNamespace>
@@ -25,15 +25,21 @@
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
     <ProjectReference Include="..\..\src\Eaglin.AiManager.WinForms\Eaglin.AiManager.WinForms.csproj" />
+    <ProjectReference Include="..\..\src\Eaglin.AiManager.Wpf\Eaglin.AiManager.Wpf.csproj" />
+    <!-- UseWPF leaves these out of the implicit usings; the library tests need them. -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-windows'">
     <Compile Remove="WinForms\**" />
+    <Compile Remove="Wpf\**" />
   </ItemGroup>
 
 </Project>
