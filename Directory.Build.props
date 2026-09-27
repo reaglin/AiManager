@@ -4,7 +4,7 @@
 
   <PropertyGroup>
     <!-- One version property. build/pack.ps1 reads it for the package version. -->
-    <AiManagerVersion>1.3.0</AiManagerVersion>
+    <AiManagerVersion>1.4.0</AiManagerVersion>
     <Version>$(AiManagerVersion)</Version>
     <AssemblyVersion>$(AiManagerVersion).0</AssemblyVersion>
     <FileVersion>$(AiManagerVersion).0</FileVersion>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- WinForms surfaces over Eaglin.AiManager: the AI Settings form and the AI Usage form, and
+       AiManagerWinForms, the static entry point that opens them. Referenced by the WinForms
+       apps (PreseMaker / CourseBuilder+, CIATLE) so they share the one key store with the WPF
+       apps. The counterpart of Eaglin.AiManager.Wpf. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Eaglin.AiManager.WinForms</RootNamespace>
+    <PackageId>Eaglin.AiManager.WinForms</PackageId>
+    <Description>WinForms AI Settings and AI Usage forms for Eaglin.AiManager.</Description>
+    <IsPackable>true</IsPackable>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Eaglin.AiManager\Eaglin.AiManager.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Eaglin.AiManager.Tests" />
+  </ItemGroup>
+
+</Project>

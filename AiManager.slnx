@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/AiManagerApp/AiManagerApp.csproj" />
+    <Project Path="src/Eaglin.AiManager.WinForms/Eaglin.AiManager.WinForms.csproj" />
     <Project Path="src/Eaglin.AiManager.Wpf/Eaglin.AiManager.Wpf.csproj" />
     <Project Path="src/Eaglin.AiManager/Eaglin.AiManager.csproj" />
   </Folder>

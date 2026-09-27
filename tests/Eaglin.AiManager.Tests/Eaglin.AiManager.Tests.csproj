@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- net10.0 runs the library tests anywhere (the library has no UI); net10.0-windows runs
+         them again and adds the WinForms package's tests (the WinForms/ folder). -->
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <RootNamespace>Eaglin.AiManager.Tests</RootNamespace>
   </PropertyGroup>
@@ -19,6 +21,19 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Eaglin.AiManager\Eaglin.AiManager.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <ProjectReference Include="..\..\src\Eaglin.AiManager.WinForms\Eaglin.AiManager.WinForms.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-windows'">
+    <Compile Remove="WinForms\**" />
   </ItemGroup>
 
 </Project>

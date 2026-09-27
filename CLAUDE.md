@@ -16,9 +16,13 @@ Google Cloud TTS, voices, synthesis, pronunciation dictionary — moving out of 
 AiManager.slnx
 ├── src/Eaglin.AiManager/           net10.0          the library every app references (NuGet)
 ├── src/Eaglin.AiManager.Wpf/       net10.0-windows  AI Settings / Prompt Library / Usage windows for WPF apps
-├── src/Eaglin.AiManager.WinForms/  net10.0-windows  the same three as WinForms forms (CIATLE, PreseMaker)
+├── src/Eaglin.AiManager.WinForms/  net10.0-windows  AI Settings + AI Usage forms for WinForms apps (PreseMaker /
+│                                                    CourseBuilder+, CIATLE), opened with one call:
+│                                                    AiManagerWinForms.ShowSettings(owner, "PreseMaker") / ShowUsage(…).
+│                                                    Since 1.4.0. No Prompt Library form yet (no WinForms app needs one)
 ├── src/AiManagerApp/               net10.0-windows  standalone "AI Manager" exe (WPF) over the same library
-├── tests/Eaglin.AiManager.Tests/   net10.0          xUnit — store, router, templates, ledger, legacy import
+├── tests/Eaglin.AiManager.Tests/   net10.0 and      xUnit — store, router, templates, ledger, legacy import;
+│                                   net10.0-windows  the -windows target adds the WinForms tests (WinForms/ folder)
 └── build/pack.ps1                                   dotnet pack → C:\nuget-local (the local feed)
 ```
 
@@ -49,7 +53,7 @@ TreatWarningsAsErrors. Fix warnings, never suppress them.
 
 ```powershell
 dotnet build AiManager.slnx
-dotnet test tests/Eaglin.AiManager.Tests
+dotnet test tests/Eaglin.AiManager.Tests    # runs both targets: net10.0, net10.0-windows
 .\build\pack.ps1          # → C:\nuget-local\Eaglin.AiManager.<ver>.nupkg (+ Wpf, WinForms)
 ```
 
@@ -59,5 +63,5 @@ dotnet test tests/Eaglin.AiManager.Tests
 |---|---|---|---|
 | AuthorPlus | WPF | `src/AuthorPlus.AI` (seed of this repo; deleted once adopted) | first consumer |
 | EasyPeasyRetirement | WPF | none yet | consumes from day 1 |
-| PreseMaker | WinForms | `Services/AiProviderRouter.cs`, `Forms/AiProviderSettingsForm.cs`, keys in `Documents\PreseMaker\app_settings.json` | migrate; keep reading its legacy file as a fallback |
+| PreseMaker | WinForms | `Services/AiProviderRouter.cs`, `Forms/AiProviderSettingsForm.cs`, keys in `Documents\PreseMaker\app_settings.json` | migrate to `Eaglin.AiManager.WinForms` (built in 1.4.0; plan task 4.2); keep reading its legacy file as a fallback |
 | CIATLE | WinForms | `CIATLE.AICore` (+ `IAiManager` in CIATLE.Core) | migrate last; `IAiManager` becomes a thin adapter |

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -180,6 +181,58 @@ public sealed class UsageLedger
         if (app is not null)
             records = records.Where(r => string.Equals(r.App, app, StringComparison.OrdinalIgnoreCase));
         return records.OrderByDescending(r => r.T).Take(count).ToList();
+    }
+
+    /// <summary>
+    /// The months that have a ledger file, newest first, as "yyyy-MM" — always including the
+    /// current month, so a dashboard has something to select before the first call.
+    /// </summary>
+    public IReadOnlyList<string> Months()
+    {
+        var months = new SortedSet<string>(StringComparer.Ordinal) { DateTime.Now.ToString("yyyy-MM", CultureInfo.InvariantCulture) };
+        var dir = AiPaths.UsageDir(Root);
+        try
+        {
+            if (Directory.Exists(dir))
+                foreach (var f in Directory.GetFiles(dir, "usage-????-??.jsonl"))
+                {
+                    var m = Path.GetFileNameWithoutExtension(f)["usage-".Length..];
+                    if (DateTime.TryParseExact(m + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                        months.Add(m);
+                }
+        }
+        catch (IOException ex) { ActivityLog.Error("UsageLedger", $"Could not list {dir}", ex); }
+        catch (UnauthorizedAccessException ex) { ActivityLog.Error("UsageLedger", $"Could not list {dir}", ex); }
+        return months.Reverse().ToList();
+    }
+
+    /// <summary>The CSV header written by <see cref="ToCsv"/>.</summary>
+    public const string CsvHeader = "Time,App,Provider,Model,Purpose,InputTokens,OutputTokens,EstimatedCostUsd,Milliseconds,Streamed,Result";
+
+    /// <summary>
+    /// Records as CSV (header first, local times, invariant numbers, RFC 4180 quoting) — what
+    /// the dashboards' "Copy as CSV" puts on the clipboard.
+    /// </summary>
+    public static string ToCsv(IEnumerable<UsageRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        var sb = new StringBuilder(CsvHeader).Append('\n');
+        foreach (var r in records)
+        {
+            sb.Append(r.T.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(',')
+              .Append(Csv(r.App)).Append(',').Append(r.Provider).Append(',').Append(Csv(r.Model)).Append(',').Append(Csv(r.Purpose)).Append(',')
+              .Append(r.InTok.ToString(CultureInfo.InvariantCulture)).Append(',').Append(r.OutTok.ToString(CultureInfo.InvariantCulture)).Append(',')
+              .Append(r.CostUsd?.ToString("0.000000", CultureInfo.InvariantCulture) ?? "").Append(',')
+              .Append(r.Ms.ToString(CultureInfo.InvariantCulture)).Append(',').Append(r.Streamed ? "yes" : "no").Append(',')
+              .Append(Csv(r.Cancelled ? "cancelled" : r.Ok ? "ok" : r.Error ?? "failed")).Append('\n');
+        }
+        return sb.ToString();
+
+        static string Csv(string? s)
+        {
+            s ??= string.Empty;
+            return s.Contains(',') || s.Contains('"') || s.Contains('\n') || s.Contains('\r') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+        }
     }
 
     /// <summary>Month-to-date estimated spend across every app.</summary>

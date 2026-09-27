@@ -1,7 +1,8 @@
 # AiManager — development plan (executable breakdown)
 
 Numbered tasks per phase with file targets and acceptance criteria. Task IDs are stable — do
-not renumber. Status legend: `[ ]` not started · `[~]` in progress · `[x]` done.
+not renumber. Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · ⚠️ built and
+tested, waiting for Ron to hand-test (the mark the portfolio's plans use; see `..\CLAUDE.md`).
 
 Runtime: **.NET 10** (`net10.0` library, `net10.0-windows` UI). SDK 10.0.400 on this machine.
 Seed code: `..\AuthorPlus\src\AuthorPlus.AI` (copied 2026-09-04 from CIATLE.AICore, current
@@ -52,7 +53,7 @@ Exit: Ron enters his keys once in the standalone app; AuthorPlus (Phase 3) finds
 | 2.3 | `UsageDashboardWindow` — month picker; totals (prompts, tokens in/out, cost, errors, avg ms); by app, by provider/model, by day; recent-calls grid; Copy as CSV; budget line | same | numbers match `UsageLedger.Summarize` on a fixture ledger | [x] |
 | 2.4 | `AiRunPanel` control — streaming text area, Stop button, elapsed/tokens footer | same | used by AuthorPlus analysis item | [x] |
 | 2.5 | `AiManagerApp` (WPF exe, assembly `AiManager.exe`) hosting 2.1–2.3 as tabs plus a **Try it** tab that streams through the AiRunPanel. No `--selftest` switch: the console tool `tools/AiManager.SelfTest` already covers that and a WPF exe has no console | `src/AiManagerApp/` | Ron's daily "what did I spend" view | [x] |
-| 2.6 | `Eaglin.AiManager.WinForms`: the same three forms + panel for CIATLE/PreseMaker — **deferred to Phase 4** (built when PreseMaker migrates, task 4.2) | `src/Eaglin.AiManager.WinForms/` | | [ ] |
+| 2.6 | `Eaglin.AiManager.WinForms` for PreseMaker (CourseBuilder+) and CIATLE: **`AiSettingsForm`** (row per provider: masked key + Show, status dot, Get a key link, model from the catalog + Models, Test; default provider for all programs and for the calling app; monthly spending warning; Import keys from other programs; Save/Cancel, Cancel forgets tested-but-unsaved keys), **`UsageDashboardForm`** (month + program filters, six tiles, by program / by provider and model / by day with bars, most recent requests, Copy as CSV, budget line), **`AiManagerWinForms.ShowSettings/ShowUsage`**. Built 2026-09-27, **1.4.0**. Prompt Library form and a streaming panel not built — no WinForms consumer needs them yet | `src/Eaglin.AiManager.WinForms/` | 32 WinForms tests green (session, report, forms driven headless on STA); screenshots at 100% and simulated 150%. UX: walkthrough + heuristics — 0 critical, 3 major and 5 minor fixed (Cancel closes without a second question; a changed key clears its old Test result; a link to AI Usage; import says per provider what will be copied or kept; buttons that say their action; plain-word errors, purposes and results; sub-cent totals shown to 4 places; a Close button). **Ron:** open both from a WinForms host (PreseMaker once 4.2 starts) at 100% and at 150%+ scale; press Test with a real key; Import from PreseMaker | ⚠️ |
 
 ## Phase 3 — Package and first consumer
 
@@ -69,7 +70,7 @@ Exit: AuthorPlus builds against `Eaglin.AiManager` from `C:\nuget-local` and its
 | # | Task | Targets | Acceptance | Status |
 |---|---|---|---|---|
 | 4.1 | EasyPeasyRetirement references the package when its first AI feature starts | that repo | | [ ] |
-| 4.2 | PreseMaker: WinForms package (2.6), replace router + settings form, legacy fallback for one release, per-task routing → `AiRequest.Provider` | PreseMaker repo | its 291 tests stay green | [ ] |
+| 4.2 | PreseMaker: WinForms package (2.6, built in 1.4.0 — `AiManagerWinForms.ShowSettings(this, "PreseMaker")`), replace router + settings form, legacy fallback for one release, per-task routing → `AiRequest.Provider` | PreseMaker repo | its 291 tests stay green | [ ] |
 | 4.3 | CIATLE: delete `CIATLE.AICore`, adapter implementing `IAiManager` over `AiHub` | CIATLE repo | FCE narrative drafting unchanged for the user | [ ] |
 | 4.4 | Remove legacy fallbacks; `LegacyCredentials` stays as an import button only | all | | [ ] |
 
@@ -131,3 +132,22 @@ library with one stored Google Cloud credential.
   in memory until Save; Test/Models push typed keys into the hub in memory first, so an
   unsaved key can be tried. Per-app *models* have no UI yet (only the per-app default
   provider); edit `settings.json` for that.
+- **2026-09-27 — 2.6 built: `Eaglin.AiManager.WinForms` 1.4.0 (⚠️ waiting for Ron).** Two forms
+  and a static entry point: `AiManagerWinForms.ShowSettings(owner, "PreseMaker")` (returns true on
+  Save) and `ShowUsage(owner, "PreseMaker", onlyThisApp)`, each with an `AiHub` overload for an app
+  that already holds one. The settings form explains, in plain words, what a provider and an API
+  key are, where to get one (a **Get a key** link per provider — the URLs are now
+  `AiProviderRouter.KeyPages` in the library), and that the key is shared with the publisher's
+  other programs. Non-UI logic sits in `AiSettingsSession` and `UsageReport` so it is tested
+  without a window; the library gained `UsageLedger.Months()` and `UsageLedger.ToCsv()` (the WPF
+  dashboard still has its own copies). DPI follows CIATLE's `DpiAwareForm`: laid out at 96 DPI,
+  `AutoScaleMode.Dpi` + `PerformAutoScale()` in `OnLoad` once every control exists (so PerMonitorV2
+  rescaling on a monitor change works), no fixed-width grid columns, font-derived sizes (grid rows,
+  drop-down widths, wrap widths) computed after scaling. Both of this machine's monitors are at
+  100%, so 150% was *simulated* (fonts and layout scaled 1.5x in a scratch host) — Ron's hand-test
+  at a real 150%/200% is the check that counts. The test project now targets `net10.0` (library
+  tests, anywhere) and `net10.0-windows` (the same plus the WinForms tests). Left as they are, for
+  Ron to decide: Enter does not Save in the WinForms form (WPF's Save is the default button);
+  the WPF views still say "Import keys…" and "(all apps)" where WinForms says "Import keys from
+  other programs…" and "All programs"; `LegacyCredentials` reads PreseMaker, AuthorPlus and
+  CIATLE-FCE, not the CIATLE-PE file PLAN §11 lists.

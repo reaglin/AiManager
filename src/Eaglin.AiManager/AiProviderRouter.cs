@@ -37,6 +37,19 @@ public static class AiProviderRouter
         { AiProviderType.XAi,     new[] { "grok-4", "grok-3", "grok-3-mini" } }
     };
 
+    /// <summary>
+    /// The page on each vendor's site where a signed-in user creates an API key. Shown as a link
+    /// in the settings UIs so a first-time user knows where a key comes from.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<AiProviderType, string> KeyPages = new Dictionary<AiProviderType, string>
+    {
+        { AiProviderType.Claude,  "https://console.anthropic.com/settings/keys" },
+        { AiProviderType.Gemini,  "https://aistudio.google.com/app/apikey"      },
+        { AiProviderType.OpenAi,  "https://platform.openai.com/api-keys"        },
+        { AiProviderType.Mistral, "https://console.mistral.ai/api-keys"         },
+        { AiProviderType.XAi,     "https://console.x.ai"                        }
+    };
+
     /// <summary>All provider types except None, in enum order.</summary>
     public static IReadOnlyList<AiProviderType> AllProviders { get; } =
         Enum.GetValues<AiProviderType>().Where(p => p != AiProviderType.None).ToList();
