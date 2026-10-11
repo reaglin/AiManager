@@ -3,8 +3,10 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Eaglin.AiManager.Help;
 using Eaglin.AiManager.Legacy;
 
 namespace Eaglin.AiManager.Wpf;
@@ -73,7 +75,18 @@ public partial class AiSettingsView : UserControl
             ProviderGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var dot = new Ellipse { Width = 10, Height = 10, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            var name = new TextBlock { Text = AiHub.DisplayName(p), VerticalAlignment = VerticalAlignment.Center };
+            var provider = p;
+            var getKey = new Hyperlink(new Run("Get a key")) { ToolTip = $"Opens {AiProviderRouter.KeyPages[p]} in your web browser. Sign in, create a key, copy it and paste it into the box." };
+            getKey.Click += (_, _) => KeyHelpLinks.Open(Window.GetWindow(this), AiProviderRouter.KeyPages[provider]);
+            AutomationProperties.SetName(getKey, $"Get a key from {AiHub.DisplayName(p)} (opens the website)");
+            var how = new Hyperlink(new Run("How?")) { ToolTip = $"The steps for getting a {AiHub.DisplayName(p)} key, and what to choose in its form (checked {KeyHelp.For(p).CheckedOn})." };
+            how.Click += (_, _) => new KeyHelpWindow(_hub, provider) { Owner = Window.GetWindow(this) }.ShowDialog();
+            AutomationProperties.SetName(how, $"How to get a key from {AiHub.DisplayName(p)}: steps and what to choose");
+            var links = new TextBlock { FontSize = 11, Margin = new Thickness(0, 0, 0, 2) };
+            links.Inlines.Add(getKey); links.Inlines.Add(new Run("  ·  ")); links.Inlines.Add(how);
+            var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            name.Children.Add(new TextBlock { Text = AiHub.DisplayName(p) });
+            name.Children.Add(links);
             var key = new PasswordBox { Margin = new Thickness(0, 3, 0, 3), VerticalContentAlignment = VerticalAlignment.Center };
             var keyPlain = new TextBox { Margin = new Thickness(0, 3, 0, 3), Visibility = Visibility.Collapsed, VerticalContentAlignment = VerticalAlignment.Center };
             var show = new ToggleButton { Content = "Show", Margin = new Thickness(6, 0, 10, 0), Padding = new Thickness(6, 1, 6, 1) };
@@ -110,6 +123,14 @@ public partial class AiSettingsView : UserControl
             ? $"Model for {_hub.App}: \"{SameAsAll}\" uses the model to its left. Pick another model to have {_hub.App} use it while the other programs keep theirs. It takes effect when you press Save."
             : string.Empty;
         AppModelHint.Visibility = PerApp ? Visibility.Visible : Visibility.Collapsed;
+
+        var help = new Hyperlink(new Run($"Step-by-step help for getting a key from each provider (checked {KeyHelp.CheckedOn})…"))
+        {
+            ToolTip = "Opens a page in your web browser with the steps and choices for every provider, the date they were checked, and what has changed. Providers change their websites, so the page is dated."
+        };
+        help.Click += (_, _) => KeyHelpLinks.OpenFullHelp(Window.GetWindow(this), _hub.Root);
+        HelpLinkText.Inlines.Add(new Run("You need a key from one provider. Get a key opens the provider's page; How? says what to choose there. "));
+        HelpLinkText.Inlines.Add(help);
 
         void Place(UIElement e, int row, int col)
         {

@@ -102,6 +102,28 @@ key already stored in AI Manager, as the option beside its local Whisper.
 
 ---
 
+## Phase 7 — Getting a key: dated help for every provider (Ron, 2026-10-11)
+
+Ron, testing a new CourseBuilder+ install: Anthropic's create-key form offered Organization,
+Default Workspace and "CIATLE and Presemaker", with no way to make a key for one program, and
+nothing told the user what to choose. *"We will need to keep track of changes and specific
+instructions for all the different providers and options as they change. A specific full help
+page that is dated … It also needs to note that instructions for different providers are
+subject to change."* How the instructions are kept current: `docs/PROVIDER-KEY-HELP.md`.
+
+Exit: a first-time user opening AI Settings from any program can find, for the provider they
+chose, what to pick in that provider's create-key form, and a dated page covering all of them.
+
+| # | Task | Targets | Acceptance | Status |
+|---|---|---|---|---|
+| 7.1 | **1.6.0.** `Help.KeyHelp` — the one place the instructions live: per provider the summary, numbered steps, **what to choose for each option** in its create-key form, paying, things to watch for, the official sources and the **date checked**; `KeyHelp.CheckedOn` (page date), `MayChange` (the "subject to change" notice), `Changes` (dated change log); `ShortText(p)`; `WriteHtml(root)` writes `Documents\AiManager\help\api-keys.html` (dated, notice at top, every provider, "What changed"). Content checked 2026-10-11 against each provider's documentation. Key pages updated: Claude → `platform.claude.com/settings/keys` (the Console moved), Gemini → `aistudio.google.com/apikey`, xAI → `console.x.ai/team/default/api-keys` | `src/Eaglin.AiManager/Help/KeyHelp.cs`, `AiProviderRouter.cs` | 5 new tests (`KeyHelpTests`: every provider complete and dated, key pages agree, page date = newest provider date, change log newest first, Claude says Default Workspace, page dated + "subject to change" + every provider + written under the root); 104 + 147 green. **Ron:** read the help page and the How? text for the provider you use | ⚠️ |
+| 7.2 | Both settings windows: **How?** beside each **Get a key** (WinForms: a task dialog with the steps and choices, *Open the key page*, *Full help for every provider*; WPF: `KeyHelpWindow` with the same buttons) and a line under the introduction, **"Step-by-step help for getting a key from each provider (checked {date})…"**, that writes and opens the page. Errors point to it: a rejected key now says it may have expired and to see How?; a Claude 400 about a workspace says to make a key in Default Workspace | `AiSettingsForm.cs`, `AiSettingsSession.cs`, `AiSettingsView.xaml(.cs)`, `Windows.cs` | 3 new WinForms tests (`WinFormsKeyHelpTests`). Screenshots of both windows, the How? for Claude (WinForms task dialog, WPF window) and the page in Edge, 2026-10-11 — layout fine, nothing clipped. UX (heuristics, by Claude; no ux-reviewer agent on this computer): instructions say what to pick and why, the page is dated with a notice at the top (match with the real world, help and documentation), errors name the fix and point to How? (recognise and recover). **Ron:** open AI Settings from CourseBuilder+ (after 7.4), click How? beside Claude and follow it to make a key; open the full help page | ⚠️ |
+| 7.3 | Keep it current: re-check every provider **before each AI Manager release and at least every three months**, and whenever a user reports a screen that differs; update `KeyHelp` (steps, date, a `Changes` entry) and `KeyPages` together | `docs/PROVIDER-KEY-HELP.md` | next check due by 2026-12-31 | ⬜ |
+| 7.4 | Pack 1.6.0 to `C:
+uget-local` (done 2026-10-11). CourseBuilder+ (PreseMaker) and the WPF programs show How? once they move to 1.6.0, with their next update | `build/pack.ps1`, consumer repos | each program's AI Settings shows How? | ⬜ |
+
+---
+
 ## Notes from hand-testing
 
 - **2026-09-12 — Phase 0 done.** 31 unit tests green. `discover` found keys in PreseMaker

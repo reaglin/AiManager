@@ -39,15 +39,16 @@ public static class AiProviderRouter
 
     /// <summary>
     /// The page on each vendor's site where a signed-in user creates an API key. Shown as a link
-    /// in the settings UIs so a first-time user knows where a key comes from.
+    /// in the settings UIs so a first-time user knows where a key comes from. The steps on each
+    /// page are in <see cref="Help.KeyHelp"/>; change the two together (docs/PROVIDER-KEY-HELP.md).
     /// </summary>
     public static readonly IReadOnlyDictionary<AiProviderType, string> KeyPages = new Dictionary<AiProviderType, string>
     {
-        { AiProviderType.Claude,  "https://console.anthropic.com/settings/keys" },
-        { AiProviderType.Gemini,  "https://aistudio.google.com/app/apikey"      },
+        { AiProviderType.Claude,  "https://platform.claude.com/settings/keys"   },
+        { AiProviderType.Gemini,  "https://aistudio.google.com/apikey"          },
         { AiProviderType.OpenAi,  "https://platform.openai.com/api-keys"        },
         { AiProviderType.Mistral, "https://console.mistral.ai/api-keys"         },
-        { AiProviderType.XAi,     "https://console.x.ai"                        }
+        { AiProviderType.XAi,     "https://console.x.ai/team/default/api-keys"  }
     };
 
     /// <summary>All provider types except None, in enum order.</summary>

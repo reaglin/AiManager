@@ -1,4 +1,5 @@
 using System.Globalization;
+using Eaglin.AiManager.Help;
 using Eaglin.AiManager.Legacy;
 
 namespace Eaglin.AiManager.WinForms;
@@ -98,7 +99,16 @@ public sealed class AiSettingsForm : ScaledForm
             "An API key is a long code, like a password, that you create on the provider's website after signing in. " +
             "The provider charges that account for what you use, usually a few cents a request. You need a key for only one provider. " +
             "To get one: click Get a key next to a provider, sign in (or sign up), create a key, copy it, and paste it into the box. " +
-            "Then press Test to check it, and Save."));
+            "Then press Test to check it, and Save. How? beside each link says what to choose in the provider's form."));
+        var help = new LinkLabel
+        {
+            Text = $"Step-by-step help for getting a key from each provider (checked {KeyHelp.CheckedOn})…",
+            AutoSize = true, LinkColor = Ui.Accent, Margin = new Padding(0, 0, 0, 8),
+            AccessibleName = "Step-by-step help for getting a key from each provider (opens in your web browser)"
+        };
+        help.LinkClicked += (_, _) => OpenFullHelp();
+        _tips.SetToolTip(help, "Opens a page in your web browser with the steps and choices for every provider, the date they were checked, and what has changed. Providers change their websites, so the page is dated.");
+        stack.Controls.Add(help);
         stack.Controls.Add(new WrapLabel(
             $"Your keys are stored encrypted for your Windows account in {hub.Root}. They are shared with the other programs " +
             "from the same publisher that use AI Manager, so a key entered once works in each of them — and changing or removing " +
@@ -228,7 +238,11 @@ public sealed class AiSettingsForm : ScaledForm
                 ? $"Sends {name} a one-word question with this key and the model {app} uses, to check they work. It costs a fraction of a cent."
                 : $"Sends {name} a one-word question with this key and model, to check they work. It costs a fraction of a cent.");
             models.MinimumSize = test.MinimumSize = new Size(70, 26);
-            var link = new LinkLabel { Text = "Get a key", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(0, 0, 0, 10), AccessibleName = $"Get a key from {name} (opens the website)", LinkColor = Ui.Accent };
+            var links = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(0, 0, 0, 10), Padding = new Padding(0) };
+            var link = new LinkLabel { Text = "Get a key", AutoSize = true, Margin = new Padding(0, 0, 10, 0), AccessibleName = $"Get a key from {name} (opens the website)", LinkColor = Ui.Accent };
+            var how = new LinkLabel { Text = "How?", AutoSize = true, Margin = new Padding(0), AccessibleName = $"How to get a key from {name}: steps and what to choose", LinkColor = Ui.Accent };
+            links.Controls.Add(link);
+            links.Controls.Add(how);
             var status = new Label { AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, ForeColor = Ui.Muted, Margin = new Padding(0, 0, 0, 10), UseMnemonic = false };
 
             models.AccessibleName = $"List {name} models";
@@ -252,8 +266,10 @@ public sealed class AiSettingsForm : ScaledForm
             test.Click += async (_, _) => await TestAsync(row);
             var url = AiProviderRouter.KeyPages[p];
             link.LinkClicked += (_, _) => OpenLink(url);
+            how.LinkClicked += (_, _) => ShowKeyHelp(p);
 
             _tips.SetToolTip(link, $"Opens {url} in your web browser. Sign in, create a key, copy it and paste it into the box.");
+            _tips.SetToolTip(how, $"The steps for getting a {name} key, and what to choose in its form (checked {KeyHelp.For(p).CheckedOn}).");
             _tips.SetToolTip(key, $"Paste your {name} API key here. It is hidden unless Show is ticked.");
             _tips.SetToolTip(model, perApp
                 ? $"Which of the provider's AIs every program asks, unless it has its own choice. Pick one from the list, or type any name the provider accepts."
@@ -272,7 +288,7 @@ public sealed class AiSettingsForm : ScaledForm
             t.Controls.Add(models, cModels, r);
             t.Controls.Add(test, cTest, r);
             r++;
-            t.Controls.Add(link, 1, r);
+            t.Controls.Add(links, 1, r);
             t.Controls.Add(status, 2, r);
             t.SetColumnSpan(status, cTest - 1);
             _fitted.Add((t, status, 2, cTest - 1));
@@ -606,6 +622,44 @@ public sealed class AiSettingsForm : ScaledForm
         {
             if (!IsDisposed) row.Models.Enabled = true;
         }
+    }
+
+    /// <summary>One provider's steps and choices, with buttons to its key page and to the full help page.</summary>
+    private void ShowKeyHelp(AiProviderType p)
+    {
+        var h = KeyHelp.For(p);
+        var heading = $"How to get a {h.Name} key";
+        if (!Application.RenderWithVisualStyles)
+        {
+            MessageBox.Show(this, heading + "\n\n" + KeyHelp.ShortText(p) + $"\n\nKey page: {h.KeyPage}\nFull help: {KeyHelp.HelpFile(_session.Hub.Root)}",
+                "AI Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var open = new TaskDialogButton("Open the key page");
+        var full = new TaskDialogButton("Full help for every provider");
+        var close = new TaskDialogButton("Close");
+        var page = new TaskDialogPage
+        {
+            Caption = "AI Settings", Heading = heading, Text = KeyHelp.ShortText(p), Icon = TaskDialogIcon.Information,
+            AllowCancel = true, Buttons = { open, full, close }, DefaultButton = open
+        };
+        var pressed = TaskDialog.ShowDialog(this, page);
+        if (pressed == open) OpenLink(h.KeyPage);
+        else if (pressed == full) OpenFullHelp();
+    }
+
+    /// <summary>Writes the dated help page into the store's help folder and opens it in the browser.</summary>
+    private void OpenFullHelp()
+    {
+        string path;
+        try { path = KeyHelp.WriteHtml(_session.Hub.Root); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, $"The help page could not be written to {_session.Hub.Root}.\n\n{ex.Message}\n\nHow? beside each provider shows the same steps.",
+                "AI Settings", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        OpenLink(path);
     }
 
     private void ImportKeys()

@@ -8,6 +8,9 @@ OpenAI whisper-1 or Mistral Voxtral, times per segment and word; first used by V
 Google Cloud TTS, voices, synthesis, pronunciation dictionary — moving out of PreseMaker; see
 `docs/PLAN.md` §14). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
 
+**Getting a key** (how to make a key at each provider, dated, shown by How? and the help page) lives in
+`src/Eaglin.AiManager/Help/KeyHelp.cs`; re-check it before each release — `docs/PROVIDER-KEY-HELP.md`.
+
 **Read first:** `docs/PLAN.md` (design and decisions) then `docs/DEVELOPMENT-PLAN.md`
 (numbered tasks with status).
 

@@ -15,6 +15,7 @@
             <TextBlock Style="{StaticResource Ai.H1}" Text="AI Settings"/>
             <TextBlock x:Name="IntroText" Style="{StaticResource Ai.MutedText}"
                        Text="Keys are stored encrypted for this Windows user and shared by every app that uses the AI Manager."/>
+            <TextBlock x:Name="HelpLinkText" Margin="0,4,0,0" TextWrapping="Wrap"/>
         </StackPanel>
 
         <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Ai.Line}" BorderThickness="0,1,0,0" Padding="0,10,0,0" Margin="0,12,0,0">

@@ -201,7 +201,9 @@ internal sealed class AiSettingsSession
         return ex.Kind switch
         {
             AiErrorKind.NoKey         => "There is no key for this provider. Paste one into the box first.",
-            AiErrorKind.Auth          => $"{name} did not accept this key. Check it was copied whole (no spaces), or create a new one on the provider's website.",
+            AiErrorKind.Auth          => $"{name} did not accept this key. Check it was copied whole (no spaces). A key that worked before may have expired or been deleted: create a new one (How? beside Get a key shows the steps).",
+            _ when ex.Provider == AiProviderType.Claude && ex.StatusCode == 400 && ex.Message.Contains("workspace", StringComparison.OrdinalIgnoreCase)
+                                      => $"{name} needs a key made for one workspace. Create a new key and choose Default Workspace (How? beside Get a key shows the steps).",
             AiErrorKind.RateLimit     => $"{name} says the account is over its limit or has no credit left. Check billing on the provider's website, then try again.",
             AiErrorKind.Network       => "Could not reach the provider. Check the internet connection, then try again.",
             AiErrorKind.Timeout       => "The provider took too long to answer. Try again in a minute.",
