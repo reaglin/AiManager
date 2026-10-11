@@ -33,6 +33,28 @@ public static class Pricing
         ("grok-3",             new( 3.00, 15.00))
     };
 
+    /// <summary>
+    /// Speech-to-text prices, USD per minute of audio (1.5.0), matched by the longest prefix like
+    /// the token table. Vendors' list prices as of 2026-10-10.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Prefix, double UsdPerMinute)> PerMinute = new (string, double)[]
+    {
+        ("whisper-1",              0.006),
+        ("gpt-4o-transcribe",      0.006),
+        ("gpt-4o-mini-transcribe", 0.003),
+        ("voxtral-mini",           0.003)
+    };
+
+    /// <summary>Estimated cost of transcribing <paramref name="seconds"/> of audio; null when the model has no per-minute price.</summary>
+    public static double? EstimateAudio(string model, double seconds)
+    {
+        var id = Normalize(model);
+        double? found = null; int foundLen = -1;
+        foreach (var (prefix, perMinute) in PerMinute)
+            if (id.StartsWith(prefix, StringComparison.Ordinal) && prefix.Length > foundLen) { found = perMinute; foundLen = prefix.Length; }
+        return found is { } p ? Math.Max(0, seconds) / 60.0 * p : null;
+    }
+
     /// <summary>"models/gemini-2.5-flash" → "gemini-2.5-flash"; case-insensitive matching.</summary>
     public static string Normalize(string model)
     {

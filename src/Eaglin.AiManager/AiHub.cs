@@ -47,6 +47,18 @@ public sealed class AiHub
     internal Func<AiProviderType, string, string, IAiProvider> ProviderFactory { get; set; }
         = (t, k, m) => AiProviderRouter.Build(t, k, m);
 
+    /// <summary>Raised after every successful transcription (1.5.0).</summary>
+    public event Action<AiTranscript>? Transcribed;
+
+    /// <summary>Test seam: builds the speech-to-text wrapper for (type, key, model). Defaults to the real vendors.</summary>
+    internal Func<AiProviderType, string, string, ISpeechToText> SpeechFactory { get; set; }
+        = (t, k, m) => t switch
+        {
+            AiProviderType.OpenAi  => new OpenAiSpeechToText(k, m),
+            AiProviderType.Mistral => new MistralSpeechToText(k, m),
+            _ => throw new ArgumentException($"{t} cannot transcribe audio.", nameof(t))
+        };
+
     private string? _budgetWarnedMonth;
 
     private AiHub(string app, string root, HttpClient? http)
@@ -307,6 +319,108 @@ public sealed class AiHub
         return await Task.WhenAll(tasks);
     }
 
+    // ── Speech to text (1.5.0) ────────────────────────────────────────────────
+
+    /// <summary>The providers that can turn audio into text, in the order they are tried.</summary>
+    public static IReadOnlyList<AiProviderType> TranscriptionProviders { get; } = [AiProviderType.OpenAi, AiProviderType.Mistral];
+
+    /// <summary>The largest audio file a transcription sends (OpenAI's limit; Mistral's is larger).</summary>
+    public const long MaxTranscriptionBytes = 25L * 1024 * 1024;
+
+    public static bool CanTranscribe(AiProviderType provider) => TranscriptionProviders.Contains(provider);
+
+    /// <summary>The providers that can transcribe and have a stored key.</summary>
+    public IReadOnlyList<AiProviderType> TranscriptionProvidersWithKeys =>
+        TranscriptionProviders.Where(Credentials.HasKey).ToList();
+
+    /// <summary>
+    /// The model a transcription uses when the request names none: whisper-1 for OpenAI (the one
+    /// that returns word and segment times), voxtral-mini-latest for Mistral.
+    /// </summary>
+    public static string DefaultTranscriptionModel(AiProviderType provider) => provider switch
+    {
+        AiProviderType.OpenAi  => "whisper-1",
+        AiProviderType.Mistral => "voxtral-mini-latest",
+        _ => string.Empty
+    };
+
+    /// <summary>
+    /// Turns an audio file into text with times. The provider is the request's, else the app's
+    /// default when it can transcribe and has a key, else the first transcription provider with a
+    /// key. Throws <see cref="AiException"/> on any failure the user can act on (no key, file too
+    /// large, rejected key, network), <see cref="FileNotFoundException"/> for a missing file and
+    /// <see cref="OperationCanceledException"/> on cancel. Every call is written to the usage ledger
+    /// with its seconds of audio and estimated cost.
+    /// </summary>
+    public async Task<AiTranscript> TranscribeAsync(AiTranscriptionRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var provider = ResolveTranscriptionProvider(request.Provider);
+        var key = Credentials.KeyFor(provider);
+        if (key.Length == 0)
+            throw new AiException(AiErrorKind.NoKey, provider,
+                $"No {DisplayName(provider)} API key is stored. Add one in AI Settings.");
+
+        var info = new FileInfo(request.AudioPath);
+        if (!info.Exists) throw new FileNotFoundException("The audio file to transcribe was not found.", request.AudioPath);
+        if (info.Length > MaxTranscriptionBytes)
+            throw new AiException(AiErrorKind.ProviderError, provider,
+                $"The audio file is too large to send ({info.Length / 1024.0 / 1024.0:0.0} MB; the limit is {MaxTranscriptionBytes / 1024 / 1024} MB). " +
+                "Send a shorter recording, or the sound alone in a more compressed file such as MP3.");
+
+        var model   = string.IsNullOrWhiteSpace(request.Model) ? DefaultTranscriptionModel(provider) : request.Model!;
+        var purpose = string.IsNullOrWhiteSpace(request.Purpose) ? "(unnamed)" : request.Purpose;
+        var impl    = SpeechFactory(provider, key, model);
+        var p       = new Called(provider, model, purpose);
+
+        ActivityLog.Info("AiHub", $"→ {provider}/{model}  purpose={purpose}  transcribe {info.Name} ({info.Length / 1024} KB)");
+        var sw = Stopwatch.StartNew();
+        SpeechResult result;
+        try
+        {
+            result = await impl.TranscribeAsync(info.FullName, request.Language, request.Prompt, request.Words, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            Record(p, request.Purpose, sw, 0, 0, ok: false, error: null, streamed: false, cancelled: true, null, null);
+            throw;
+        }
+        catch (AiException ex)
+        {
+            Record(p, request.Purpose, sw, 0, 0, ok: false, error: ex.Kind.ToString(), streamed: false, cancelled: false, null, null);
+            throw;
+        }
+        sw.Stop();
+
+        var cost = Pricing.EstimateAudio(model, result.AudioSeconds);
+        var transcript = new AiTranscript
+        {
+            Text = result.Text, Segments = result.Segments, Words = result.Words, Language = result.Language,
+            AudioSeconds = result.AudioSeconds, Provider = provider, Model = model, App = App, Purpose = request.Purpose,
+            EstimatedCostUsd = cost, Elapsed = sw.Elapsed
+        };
+        ActivityLog.Info("AiHub", $"✓ {provider}/{model}  purpose={purpose}  audio={result.AudioSeconds:0.0}s  segments={result.Segments.Count}  words={result.Words.Count}  cost={(cost is null ? "?" : $"${cost:F4}")}  {sw.Elapsed.TotalSeconds:0.0}s");
+        Record(p, request.Purpose, sw, 0, 0, ok: true, error: null, streamed: false, cancelled: false, cost, result.AudioSeconds);
+        Transcribed?.Invoke(transcript);
+        return transcript;
+    }
+
+    private AiProviderType ResolveTranscriptionProvider(AiProviderType? asked)
+    {
+        if (asked is { } a && a != AiProviderType.None)
+        {
+            if (!CanTranscribe(a))
+                throw new AiException(AiErrorKind.ProviderError, a,
+                    $"{DisplayName(a)} cannot transcribe audio; use OpenAI or Mistral AI.");
+            return a;
+        }
+        if (CanTranscribe(DefaultProvider) && Credentials.HasKey(DefaultProvider)) return DefaultProvider;
+        return TranscriptionProvidersWithKeys.FirstOrDefault() is { } first && first != AiProviderType.None
+            ? first
+            : throw new AiException(AiErrorKind.NoKey, AiProviderType.None,
+                "Transcribing in the cloud needs an OpenAI or Mistral AI key. Add one in AI Settings.");
+    }
+
     // ── Accounting ────────────────────────────────────────────────────────────
 
     private AiResponse Finish(Prepared p, AiRequest request, Stopwatch sw, string text, int inTok, int outTok, string? stop, bool streamed)
@@ -332,7 +446,14 @@ public sealed class AiHub
     }
 
     private void Record(Prepared p, AiRequest request, Stopwatch sw, int inTok, int outTok,
-                        bool ok, string? error, bool streamed, bool cancelled, double? cost = null)
+                        bool ok, string? error, bool streamed, bool cancelled, double? cost = null) =>
+        Record(new Called(p.Provider, p.Model, p.Purpose), request.Purpose, sw, inTok, outTok, ok, error, streamed, cancelled, cost, null);
+
+    /// <summary>What the ledger needs to know about a call, prompt or transcription.</summary>
+    private sealed record Called(AiProviderType Provider, string Model, string Purpose);
+
+    private void Record(Called p, string requestPurpose, Stopwatch sw, int inTok, int outTok,
+                        bool ok, string? error, bool streamed, bool cancelled, double? cost, double? audioSec)
     {
         if (!ok)
             ActivityLog.Warn("AiHub", cancelled
@@ -341,10 +462,11 @@ public sealed class AiHub
 
         Usage.Append(new UsageRecord
         {
-            App = App, Provider = p.Provider, Model = p.Model, Purpose = request.Purpose,
+            App = App, Provider = p.Provider, Model = p.Model, Purpose = requestPurpose,
             InTok = inTok, OutTok = outTok,
             CostUsd = cost ?? (inTok + outTok > 0 ? Pricing.Estimate(p.Model, inTok, outTok, Settings.PriceOverrides) : null),
-            Ms = sw.ElapsedMilliseconds, Ok = ok, Error = error, Streamed = streamed, Cancelled = cancelled
+            Ms = sw.ElapsedMilliseconds, Ok = ok, Error = error, Streamed = streamed, Cancelled = cancelled,
+            AudioSec = audioSec
         });
 
         CheckBudget();

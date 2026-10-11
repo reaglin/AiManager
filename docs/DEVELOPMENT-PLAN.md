@@ -90,6 +90,16 @@ library with one stored Google Cloud credential.
 | 5.6 | Settings UI "Services" block (choose JSON → encrypted; Test lists voices; default voice); `AudioPreviewPanel` | WPF + WinForms | | [ ] |
 | 5.7 | PreseMaker's `AudioGenerator` becomes a thin caller of `AiHub.Speech`; AuthorPlus v2 Audio items (its plan) | both repos | | [ ] |
 
+
+## Phase 6 — Speech to text (VideoStories+, 2026-10-10)
+
+Exit: VideoStories+ transcribes a story's recording in the cloud through the library, with the
+key already stored in AI Manager, as the option beside its local Whisper.
+
+| # | Task | Targets | Acceptance | Status |
+|---|---|---|---|---|
+| 6.1 | **1.5.0.** `AiHub.TranscribeAsync(AiTranscriptionRequest)` → `AiTranscript` (text, segments and words with times in seconds, language, audio seconds, estimated cost); `TranscriptionProviders` (OpenAI, Mistral), `CanTranscribe`, `TranscriptionProvidersWithKeys`, `DefaultTranscriptionModel` (OpenAI **whisper-1**, the model with word and segment times through `verbose_json`; Mistral **voxtral-mini-latest**, segment times only, and no `language` with them as Mistral's docs require); provider: the request's, else the program's default when it can transcribe and has a key, else the first with a key; plain-language errors for no key, a file over 25 MB (`MaxTranscriptionBytes`, refused before sending) and a provider that cannot transcribe; `ISpeechToText` with `OpenAiSpeechToText` / `MistralSpeechToText` (multipart, no SDK); `Pricing.PerMinute` + `EstimateAudio`; the ledger's optional `AudioSec`; `Transcribed` event | `Speech/`, `AiHub.cs`, `Catalog/Pricing.cs`, `Usage/UsageLedger.cs` | 10 new tests (`SpeechTests`: both request shapes, parsing, seconds fallback, 401 → Auth, too-large refused unsent, provider resolution, NoKey wording, ledger seconds and cost, cancel recorded, per-minute prices); 99 + 139 green. **Ron:** a real cloud transcription from VideoStories+ (step 3) with your OpenAI or Mistral key; the call shows in AI Usage | ⚠️ |
+
 ---
 
 ## Notes from hand-testing
@@ -161,3 +171,9 @@ library with one stored Google Cloud credential.
   be read, so a code path can never replace someone's settings with defaults. The WPF window's
   Defaults wording now matches WinForms ("programs", "Same as all programs"). Hosts for the
   screenshots used a temporary store and fake keys; Test was never pressed.
+- **2026-10-10 — 6.1 built: speech to text, 1.5.0 (⚠️ waiting for Ron).** For VideoStories+'s
+  cloud option beside local Whisper. OpenAI's whisper-1 is used rather than gpt-4o-transcribe
+  because it is the model that returns word times, which VideoStories+ needs to put photos on
+  words. Mistral returns segment times only and refuses `language` together with timestamps, so
+  the language is detected there. The dashboard does not show audio minutes yet (the ledger has
+  them in `AudioSec`); a tile can follow when a second program transcribes.

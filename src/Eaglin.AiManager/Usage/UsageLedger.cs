@@ -21,6 +21,8 @@ public sealed class UsageRecord
     public string?        Error     { get; set; }
     public bool           Streamed  { get; set; }
     public bool           Cancelled { get; set; }
+    /// <summary>Seconds of audio for a transcription (1.5.0); absent for prompts.</summary>
+    public double?        AudioSec  { get; set; }
 }
 
 /// <summary>Totals for one slice of the ledger (a month, an app, a model, a day).</summary>
