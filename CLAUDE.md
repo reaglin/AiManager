@@ -67,6 +67,12 @@ dotnet test tests/Eaglin.AiManager.Tests    # runs both targets: net10.0, net10.
 
 ## Consumers (and where their old AI code is)
 
+**Every release of every consumer moves it to the latest AI Manager version first** (Ron,
+2026-10-11), then a hand-test exe goes in that repo's `manual-test\`. So a new AI Manager version
+reaches each program with its next release; the pinned versions are tracked in `..\CLAUDE.md`,
+"Every AI program: the latest AI Manager with every release". Keep each version's changes
+readable in `docs/DEVELOPMENT-PLAN.md` — the consumers read it when they move.
+
 | App | UI | Old AI layer | Status |
 |---|---|---|---|
 | AuthorPlus | WPF | `src/AuthorPlus.AI` (seed of this repo; deleted once adopted) | first consumer |
