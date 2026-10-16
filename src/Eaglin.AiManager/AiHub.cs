@@ -59,6 +59,19 @@ public sealed class AiHub
             _ => throw new ArgumentException($"{t} cannot transcribe audio.", nameof(t))
         };
 
+    /// <summary>Raised after every successful picture call (1.7.0).</summary>
+    public event Action<AiImageResult>? ImagesGenerated;
+
+    /// <summary>Test seam: builds the picture maker for (type, key, model). Defaults to the real vendors.</summary>
+    internal Func<AiProviderType, string, string, IImageGenerator> ImageFactory { get; set; }
+        = (t, k, m) => t switch
+        {
+            AiProviderType.OpenAi => new OpenAiImageGenerator(k, m),
+            AiProviderType.Gemini => new GeminiImageGenerator(k, m),
+            AiProviderType.XAi    => new XAiImageGenerator(k, m),
+            _ => throw new ArgumentException($"{t} cannot make pictures.", nameof(t))
+        };
+
     private string? _budgetWarnedMonth;
 
     private AiHub(string app, string root, HttpClient? http)
@@ -421,6 +434,145 @@ public sealed class AiHub
                 "Transcribing in the cloud needs an OpenAI or Mistral AI key. Add one in AI Settings.");
     }
 
+    // ── Pictures (1.7.0) ──────────────────────────────────────────────────────
+
+    /// <summary>The providers that can make pictures, in the order they are tried. Claude and Mistral AI cannot.</summary>
+    public static IReadOnlyList<AiProviderType> ImageProviders { get; } = [AiProviderType.OpenAi, AiProviderType.Gemini, AiProviderType.XAi];
+
+    /// <summary>The most pictures one request asks for.</summary>
+    public const int MaxImagesPerRequest = 4;
+
+    public static bool CanGenerateImages(AiProviderType provider) => ImageProviders.Contains(provider);
+
+    /// <summary>The providers that can make pictures and have a stored key.</summary>
+    public IReadOnlyList<AiProviderType> ImageProvidersWithKeys => ImageProviders.Where(Credentials.HasKey).ToList();
+
+    /// <summary>
+    /// The built-in picture model for a provider (read from the vendors' docs on 2026-10-16):
+    /// OpenAI gpt-image-2 (its price per picture is published), Gemini's "Nano Banana 2.1", xAI Grok Imagine 2.0.
+    /// </summary>
+    public static string DefaultImageModel(AiProviderType provider) => provider switch
+    {
+        AiProviderType.OpenAi => "gpt-image-2",
+        AiProviderType.Gemini => "gemini-nano-banana-2.1",
+        AiProviderType.XAi    => "grok-imagine-image-2.0",
+        _ => string.Empty
+    };
+
+    /// <summary>The picture model a request to <paramref name="provider"/> uses when it names none: settings.json's ImageModels, else the built-in default.</summary>
+    public string ImageModel(AiProviderType provider) => Settings.ImageModelFor(provider) ?? DefaultImageModel(provider);
+
+    /// <summary>
+    /// Which provider makes pictures, and why (to tell the user before anything is sent). In order:
+    /// the request's provider; this program's "provider for pictures"; the one for all programs; this
+    /// program's provider when it can draw and has a key; the first provider that can draw and has a
+    /// key. A provider chosen in AI Settings without a key is an error, not a silent switch.
+    /// Throws <see cref="AiException"/> (<see cref="AiErrorKind.NoKey"/>) when nothing can draw.
+    /// </summary>
+    public AiImageProviderChoice ResolveImageProvider(AiProviderType? asked = null)
+    {
+        if (asked is { } a && a != AiProviderType.None)
+        {
+            if (!CanGenerateImages(a))
+                throw new AiException(AiErrorKind.ProviderError, a,
+                    $"{DisplayName(a)} cannot make pictures. Use OpenAI, Google Gemini or xAI.");
+            RequireImageKey(a, $"No {DisplayName(a)} API key is stored. Add one in AI Settings.");
+            return new AiImageProviderChoice(a, $"{DisplayName(a)}, chosen here");
+        }
+        if (Settings.AppImageProvider(App) is { } ap && CanGenerateImages(ap))
+        {
+            RequireImageKey(ap, $"Pictures for {App} are set to {DisplayName(ap)} in AI Settings, but no {DisplayName(ap)} key is " +
+                                "stored. Add the key, or choose another provider for pictures.");
+            return new AiImageProviderChoice(ap, $"{DisplayName(ap)}, chosen for pictures in {App} (AI Settings)");
+        }
+        if (Settings.ImageProvider is { } gp && CanGenerateImages(gp))
+        {
+            RequireImageKey(gp, $"Pictures are set to {DisplayName(gp)} in AI Settings, but no {DisplayName(gp)} key is stored. " +
+                                "Add the key, or choose another provider for pictures.");
+            return new AiImageProviderChoice(gp, $"{DisplayName(gp)}, chosen for pictures in AI Settings");
+        }
+        var main = DefaultProvider;
+        if (CanGenerateImages(main) && Credentials.HasKey(main))
+            return new AiImageProviderChoice(main, $"{DisplayName(main)}, the provider {App} uses");
+        if (ImageProvidersWithKeys.FirstOrDefault() is { } first && first != AiProviderType.None)
+            return new AiImageProviderChoice(first, CanGenerateImages(main)
+                ? $"{DisplayName(first)}, the first provider with a key that can make pictures (there is no {DisplayName(main)} key)"
+                : $"{DisplayName(first)}, the first provider with a key that can make pictures ({DisplayName(main)} cannot make pictures)");
+        throw new AiException(AiErrorKind.NoKey, AiProviderType.None,
+            "Making pictures needs an OpenAI, Google Gemini or xAI key. Claude and Mistral AI cannot make pictures. " +
+            "Add a key in AI Settings.");
+    }
+
+    private void RequireImageKey(AiProviderType p, string message)
+    {
+        if (!Credentials.HasKey(p)) throw new AiException(AiErrorKind.NoKey, p, message);
+    }
+
+    /// <summary>
+    /// The estimated cost of <paramref name="count"/> pictures, from the price table (and the user's
+    /// corrections); null when the price is not known. Show it before sending.
+    /// </summary>
+    public double? EstimateImages(AiProviderType provider, string? model, AiImageQuality quality, int count)
+    {
+        var m = string.IsNullOrWhiteSpace(model) ? ImageModel(provider) : model!;
+        return Pricing.EstimateImage(m, quality, Settings.ImagePriceOverrides) is { } each ? each * Math.Max(0, count) : null;
+    }
+
+    /// <summary>
+    /// Makes pictures from a description. The provider is chosen by <see cref="ResolveImageProvider"/>
+    /// and its reason is in the result. Throws <see cref="AiException"/> on any failure the user can act
+    /// on (no key; a key that cannot make pictures yet; a refusal, <see cref="AiErrorKind.Refused"/>;
+    /// rate limit; network) and <see cref="OperationCanceledException"/> on cancel. Every call is
+    /// written to the usage ledger with the pictures made and their estimated cost.
+    /// </summary>
+    public async Task<AiImageResult> GenerateImagesAsync(AiImageRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.Prompt))
+            throw new ArgumentException("Say what the picture should show.", nameof(request));
+        var choice  = ResolveImageProvider(request.Provider);
+        var provider = choice.Provider;
+        var model   = string.IsNullOrWhiteSpace(request.Model) ? ImageModel(provider) : request.Model!;
+        var purpose = string.IsNullOrWhiteSpace(request.Purpose) ? "(unnamed)" : request.Purpose;
+        var count   = Math.Clamp(request.Count, 1, MaxImagesPerRequest);
+        var impl    = ImageFactory(provider, Credentials.KeyFor(provider), model);
+        var p       = new Called(provider, model, purpose);
+
+        ActivityLog.Info("AiHub", $"→ {provider}/{model}  purpose={purpose}  pictures={count}  {request.Shape}  {request.Quality}  ({choice.Reason})");
+        var sw = Stopwatch.StartNew();
+        IReadOnlyList<AiGeneratedImage> images;
+        try
+        {
+            images = await impl.GenerateAsync(new AiImageRequest
+            {
+                Provider = provider, Model = model, Prompt = request.Prompt, Style = request.Style,
+                Shape = request.Shape, Quality = request.Quality, Count = count, Purpose = request.Purpose
+            }, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            Record(p, request.Purpose, sw, 0, 0, ok: false, error: null, streamed: false, cancelled: true, null, null);
+            throw;
+        }
+        catch (AiException ex)
+        {
+            Record(p, request.Purpose, sw, 0, 0, ok: false, error: ex.Kind.ToString(), streamed: false, cancelled: false, null, null);
+            throw;
+        }
+        sw.Stop();
+
+        var cost = EstimateImages(provider, model, request.Quality, images.Count);
+        var result = new AiImageResult
+        {
+            Images = images, Provider = provider, Model = model, App = App, Purpose = request.Purpose, Count = count,
+            EstimatedCostUsd = cost, Elapsed = sw.Elapsed, Watermark = impl.Watermark, ProviderReason = choice.Reason
+        };
+        ActivityLog.Info("AiHub", $"✓ {provider}/{model}  purpose={purpose}  pictures={images.Count}  cost={(cost is null ? "?" : $"${cost:F4}")}  {sw.Elapsed.TotalSeconds:0.0}s");
+        Record(p, request.Purpose, sw, 0, 0, ok: true, error: null, streamed: false, cancelled: false, cost, null, images.Count);
+        ImagesGenerated?.Invoke(result);
+        return result;
+    }
+
     // ── Accounting ────────────────────────────────────────────────────────────
 
     private AiResponse Finish(Prepared p, AiRequest request, Stopwatch sw, string text, int inTok, int outTok, string? stop, bool streamed)
@@ -453,7 +605,7 @@ public sealed class AiHub
     private sealed record Called(AiProviderType Provider, string Model, string Purpose);
 
     private void Record(Called p, string requestPurpose, Stopwatch sw, int inTok, int outTok,
-                        bool ok, string? error, bool streamed, bool cancelled, double? cost, double? audioSec)
+                        bool ok, string? error, bool streamed, bool cancelled, double? cost, double? audioSec, int? images = null)
     {
         if (!ok)
             ActivityLog.Warn("AiHub", cancelled
@@ -466,7 +618,7 @@ public sealed class AiHub
             InTok = inTok, OutTok = outTok,
             CostUsd = cost ?? (inTok + outTok > 0 ? Pricing.Estimate(p.Model, inTok, outTok, Settings.PriceOverrides) : null),
             Ms = sw.ElapsedMilliseconds, Ok = ok, Error = error, Streamed = streamed, Cancelled = cancelled,
-            AudioSec = audioSec
+            AudioSec = audioSec, Images = images
         });
 
         CheckBudget();

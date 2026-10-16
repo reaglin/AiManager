@@ -24,6 +24,9 @@ public sealed class AiSettingsForm : ScaledForm
     private readonly TableLayoutPanel _providers;
     private readonly ComboBox _defaultProvider;
     private readonly ComboBox _appProvider;
+    private readonly ComboBox _imageProvider;
+    private readonly ComboBox? _appImageProvider;
+    private readonly Label _imageNow;
     private readonly TextBox _budget;
     private readonly Label _spent;
     private readonly Label _footer;
@@ -65,6 +68,12 @@ public sealed class AiSettingsForm : ScaledForm
     private sealed record SameAsAll
     {
         public override string ToString() => "Same as all programs";
+    }
+
+    /// <summary>"Automatic" in the picture-provider box (1.7.0).</summary>
+    private sealed record AutomaticPictures
+    {
+        public override string ToString() => "Automatic";
     }
 
     public AiSettingsForm(AiHub hub)
@@ -136,7 +145,27 @@ public sealed class AiSettingsForm : ScaledForm
             "Used by every program that has not chosen its own. It needs a key above.");
         AddDefaultRow(defaults, 1, $"Provider for {app}:", _appProvider,
             $"Only {app}. \"Same as all programs\" follows the setting above.");
-        AddDefaultRow(defaults, 2, "Monthly spending warning (US$):", _budget,
+        // Pictures (1.7.0): only some providers can draw, so the box offers only those.
+        _imageProvider = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = "Provider for pictures, all programs", Margin = new Padding(0, 3, 12, 3) };
+        AddDefaultRow(defaults, 2, "Provider for pictures (all programs):", _imageProvider,
+            "Only OpenAI, Gemini (Google) and xAI can make pictures — Claude and Mistral AI cannot. Automatic uses the provider " +
+            "a program already uses when it can draw, else the first of these that has a key. Each picture costs a few cents on that key.");
+        var budgetRow = 3;
+        if (_session.ShowsAppModels)
+        {
+            _appImageProvider = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = $"Provider for pictures in {app}", Margin = new Padding(0, 3, 12, 3) };
+            AddDefaultRow(defaults, 3, $"Pictures for {app}:", _appImageProvider,
+                $"Only {app}. \"Same as all programs\" follows the setting above.");
+            budgetRow = 4;
+        }
+        _imageNow = new Label { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Ui.Muted, Margin = new Padding(0, 0, 0, 6), UseMnemonic = false };
+        _imageProvider.SelectedIndexChanged += (_, _) => UpdateImageNow();
+        if (_appImageProvider is not null) _appImageProvider.SelectedIndexChanged += (_, _) => UpdateImageNow();
+        defaults.Controls.Add(_imageNow, 1, budgetRow);
+        defaults.SetColumnSpan(_imageNow, 2);
+        _fitted.Add((defaults, _imageNow, 1, 2));
+        budgetRow++;
+        AddDefaultRow(defaults, budgetRow, "Monthly spending warning (US$):", _budget,
             "Leave blank for no warning. When the estimated spending of all programs passes this amount in a month, they warn you once. Nothing is blocked.");
         stack.Controls.Add(defaults);
 
@@ -255,6 +284,7 @@ public sealed class AiSettingsForm : ScaledForm
             {
                 if (_loading) return;
                 row.Tested = false;
+                UpdateImageNow();   // a key added or removed changes who can draw
                 UpdateDot(row, null);
                 SetStatus(row, key.Text.Trim().Length == 0
                     ? "No key. Get one from the link on the left and paste it into the box, or leave it empty if you do not use this provider."
@@ -334,6 +364,8 @@ public sealed class AiSettingsForm : ScaledForm
         }
         FitDropDown(_defaultProvider);
         FitDropDown(_appProvider);
+        FitDropDown(_imageProvider);
+        if (_appImageProvider is not null) FitDropDown(_appImageProvider);
         FitLabels();
     }
 
@@ -382,10 +414,45 @@ public sealed class AiSettingsForm : ScaledForm
         _appProvider.Items.AddRange(providers.Cast<object>().ToArray());
         _appProvider.SelectedIndex = _session.AppDefaultProvider is { } ap ? 1 + providers.FindIndex(i => i.Provider == ap) : 0;
 
+        var drawing = AiHub.ImageProviders.Select(p => new ProviderItem(p)).ToList();
+        _imageProvider.Items.Clear();
+        _imageProvider.Items.Add(new AutomaticPictures());
+        _imageProvider.Items.AddRange(drawing.Cast<object>().ToArray());
+        _imageProvider.SelectedIndex = _session.ImageProvider is { } ip ? 1 + drawing.FindIndex(i => i.Provider == ip) : 0;
+        if (_appImageProvider is not null)
+        {
+            _appImageProvider.Items.Clear();
+            _appImageProvider.Items.Add(new SameAsAll());
+            _appImageProvider.Items.AddRange(drawing.Cast<object>().ToArray());
+            _appImageProvider.SelectedIndex = _session.AppImageProvider is { } aip ? 1 + drawing.FindIndex(i => i.Provider == aip) : 0;
+        }
+        UpdateImageNow();
+
         _budget.Text = _session.MonthlyBudgetUsd is { } b ? b.ToString("0.##", CultureInfo.CurrentCulture) : string.Empty;
         _spent.Text = $"Spent this month by all programs: {UsageReport.Money(_session.SpentThisMonth, 2)} (an estimate from the providers' list prices; the provider's bill is the real figure).";
         _footer.Text = string.Empty;
         _snapshot = Snapshot();
+    }
+
+    /// <summary>
+    /// The line under the picture boxes: who will make pictures with what is chosen on screen, and a
+    /// warning when that provider has no key in the boxes above.
+    /// </summary>
+    private void UpdateImageNow()
+    {
+        if (_loading && _imageProvider.SelectedIndex < 0) return;
+        var chosen = (_appImageProvider?.SelectedItem as ProviderItem)?.Provider ?? (_imageProvider.SelectedItem as ProviderItem)?.Provider;
+        if (chosen is { } p)
+        {
+            var hasKey = _rows.FirstOrDefault(r => r.Provider == p)?.Key.Text.Trim().Length > 0;
+            _imageNow.Text = hasKey
+                ? $"Pictures will be made by {AiHub.DisplayName(p)}."
+                : $"Pictures are set to {AiHub.DisplayName(p)}, which has no key above — add one, or choose Automatic.";
+            _imageNow.ForeColor = hasKey ? Ui.Muted : Color.Firebrick;
+            return;
+        }
+        _imageNow.Text = "Automatic. " + _session.ImageProviderNow();
+        _imageNow.ForeColor = Ui.Muted;
     }
 
     private static void FillModels(Row row, IReadOnlyList<string> ids)
@@ -428,7 +495,8 @@ public sealed class AiSettingsForm : ScaledForm
 
     private string Snapshot() =>
         string.Join("\u001f", _rows.Select(r => r.Key.Text.Trim() + "\u001e" + r.Model.Text.Trim() + "\u001e" + AppModelOf(r)))
-        + "\u001f" + _defaultProvider.SelectedIndex + "\u001f" + _appProvider.SelectedIndex + "\u001f" + _budget.Text.Trim();
+        + "\u001f" + _defaultProvider.SelectedIndex + "\u001f" + _appProvider.SelectedIndex + "\u001f" + _budget.Text.Trim()
+        + "\u001f" + _imageProvider.SelectedIndex + "\u001f" + (_appImageProvider?.SelectedIndex ?? -1);
 
     private bool IsDirty => !_saved && Snapshot() != _snapshot;
 
@@ -448,6 +516,8 @@ public sealed class AiSettingsForm : ScaledForm
         {
             DefaultProvider = _defaultProvider.SelectedItem is ProviderItem gp ? gp.Provider : AiProviderType.Claude,
             AppDefaultProvider = _appProvider.SelectedItem is ProviderItem ap ? ap.Provider : null,
+            ImageProvider = _imageProvider.SelectedItem is ProviderItem ip ? ip.Provider : null,
+            AppImageProvider = _appImageProvider?.SelectedItem is ProviderItem aip ? aip.Provider : null,
             MonthlyBudgetUsd = budget
         };
         foreach (var row in _rows)
@@ -464,6 +534,16 @@ public sealed class AiSettingsForm : ScaledForm
             var answer = MessageBox.Show(this,
                 $"{_session.App} is set to use {AiHub.DisplayName(chosen)}, but there is no {AiHub.DisplayName(chosen)} key, so its AI features will not work.\n\n" +
                 $"Save anyway? Choose No to go back and pick, under \"Which provider to use\", a provider that has a key.",
+                "AI Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            if (answer != DialogResult.Yes) return false;
+        }
+
+        // A provider chosen for pictures needs its key, or pictures will not work: say so before saving.
+        if ((input.AppImageProvider ?? input.ImageProvider) is { } pics && input.Keys[pics].Trim().Length == 0)
+        {
+            var answer = MessageBox.Show(this,
+                $"Pictures are set to {AiHub.DisplayName(pics)}, but there is no {AiHub.DisplayName(pics)} key, so making pictures will not work.\n\n" +
+                "Save anyway? Choose No to go back and add the key, or set \"Provider for pictures\" to Automatic.",
                 "AI Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
             if (answer != DialogResult.Yes) return false;
         }
@@ -732,6 +812,10 @@ public sealed class AiSettingsForm : ScaledForm
     internal bool SaveForTests() => SaveAndClose();
     internal string FooterText => _footer.Text;
     internal bool Dirty => IsDirty;
+    internal IReadOnlyList<string> PictureChoices => _imageProvider.Items.Cast<object>().Select(o => o.ToString()!).ToList();
+    internal IReadOnlyList<string>? AppPictureChoices => _appImageProvider?.Items.Cast<object>().Select(o => o.ToString()!).ToList();
+    internal string PictureNowText => _imageNow.Text;
+    internal void SelectPictureProvider(int index) => _imageProvider.SelectedIndex = index;
     internal Task TestForTests(AiProviderType p) => TestAsync(_rows.First(r => r.Provider == p));
     internal IReadOnlyList<AiProviderType> ImportForTests() => ApplyImport(AiSettingsSession.Discover(LegacyPaths));
 }

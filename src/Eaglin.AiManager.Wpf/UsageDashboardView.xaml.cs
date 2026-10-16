@@ -86,6 +86,7 @@ public partial class UsageDashboardView : UserControl
         TileIn.Text      = t.InputTokens.ToString("N0", CultureInfo.CurrentCulture);
         TileOut.Text     = t.OutputTokens.ToString("N0", CultureInfo.CurrentCulture);
         TileCost.Text    = t.CostUsd.ToString("$0.00", CultureInfo.InvariantCulture);
+        TilePictures.Text = t.Pictures.ToString("N0", CultureInfo.CurrentCulture);
         TileErrors.Text  = $"{t.Failed} / {t.Cancelled}";
         TileAvg.Text     = t.Prompts == 0 ? "–" : t.AverageMs >= 1000 ? $"{t.AverageMs / 1000:0.0} s" : $"{t.AverageMs:0} ms";
 
@@ -120,26 +121,16 @@ public partial class UsageDashboardView : UserControl
     private void Csv_Click(object sender, RoutedEventArgs e)
     {
         var records = _hub.Usage.Read(SelectedMonth).Where(r => SelectedApp is null || string.Equals(r.App, SelectedApp, StringComparison.OrdinalIgnoreCase));
-        var sb = new StringBuilder("Time,App,Provider,Model,Purpose,InputTokens,OutputTokens,EstimatedCostUsd,Milliseconds,Streamed,Result\n");
-        foreach (var r in records)
-        {
-            sb.Append(r.T.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(',')
-              .Append(Csv(r.App)).Append(',').Append(r.Provider).Append(',').Append(Csv(r.Model)).Append(',').Append(Csv(r.Purpose)).Append(',')
-              .Append(r.InTok).Append(',').Append(r.OutTok).Append(',')
-              .Append(r.CostUsd?.ToString("0.000000", CultureInfo.InvariantCulture) ?? "").Append(',')
-              .Append(r.Ms).Append(',').Append(r.Streamed ? "yes" : "no").Append(',')
-              .Append(r.Cancelled ? "cancelled" : r.Ok ? "ok" : r.Error ?? "failed").Append('\n');
-        }
+        // The library writes the CSV, so both usage windows give the same columns (Pictures since 1.7.0).
+        var csv = UsageLedger.ToCsv(records.ToList());
         try
         {
-            Clipboard.SetText(sb.ToString());
+            Clipboard.SetText(csv);
             SubText.Text = $"Copied {records.Count()} rows as CSV.";
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Could not copy: {ex.Message}", "AI Usage", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-
-        static string Csv(string s) => s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
     }
 }

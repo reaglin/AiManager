@@ -21,6 +21,7 @@ public partial class AiSettingsView : UserControl
 {
     private const string UseGlobal = "Same as all programs";
     private const string SameAsAll = "Same as all programs";
+    private const string AutomaticPictures = "Automatic";
 
     private readonly AiHub _hub;
     private readonly List<Row> _rows = new();
@@ -170,6 +171,21 @@ public partial class AiSettingsView : UserControl
         AppDefaultLabel.Text = $"Provider for {_hub.App}";
         AppDefaultHint.Text  = $"Only {_hub.App}. \"{UseGlobal}\" follows the setting above.";
 
+        var drawing = new List<object> { AutomaticPictures };
+        drawing.AddRange(AiHub.ImageProviders.Select(p => new ProviderItem(p)));
+        ImageProviderBox.ItemsSource = drawing;
+        ImageProviderBox.SelectedItem = _hub.Settings.ImageProvider is { } ip && AiHub.CanGenerateImages(ip)
+            ? drawing.OfType<ProviderItem>().First(i => i.Provider == ip) : AutomaticPictures;
+        var appDrawing = new List<object> { UseGlobal };
+        appDrawing.AddRange(AiHub.ImageProviders.Select(p => new ProviderItem(p)));
+        AppImageProviderBox.ItemsSource = appDrawing;
+        AppImageProviderBox.SelectedItem = _hub.Settings.AppImageProvider(_hub.App) is { } aip && AiHub.CanGenerateImages(aip)
+            ? appDrawing.OfType<ProviderItem>().First(i => i.Provider == aip) : UseGlobal;
+        var perApp = _hub.IsOpenedForAnApp ? Visibility.Visible : Visibility.Collapsed;
+        AppImageLabel.Visibility = AppImageProviderBox.Visibility = perApp;
+        AppImageLabel.Text = $"Pictures for {_hub.App}";
+        UpdateImageNow();
+
         BudgetBox.Text = _hub.Settings.MonthlyBudgetUsd is { } b ? b.ToString("0.##", CultureInfo.InvariantCulture) : string.Empty;
         var spent = _hub.Usage.SpentThisMonth();
         PathText.Text  = $"Spent this month, all programs: ${spent:0.00} (estimated from list prices)   ·   Store: {_hub.Root}";
@@ -249,7 +265,9 @@ public partial class AiSettingsView : UserControl
         if (DefaultProviderBox.SelectedItem is ProviderItem gp) _hub.Settings.DefaultProvider = gp.Provider;
         var app = _hub.Settings.ForApp(_hub.App);
         app.DefaultProvider = AppDefaultProviderBox.SelectedItem is ProviderItem ap ? ap.Provider : null;
+        if (_hub.IsOpenedForAnApp) app.ImageProvider = AppImageProviderBox.SelectedItem is ProviderItem aip ? aip.Provider : null;
         if (app.IsEmpty) _hub.Settings.Apps.Remove(_hub.App);
+        _hub.Settings.ImageProvider = ImageProviderBox.SelectedItem is ProviderItem ip ? ip.Provider : null;
         _hub.Settings.MonthlyBudgetUsd = budget;
 
         try
@@ -367,6 +385,26 @@ public partial class AiSettingsView : UserControl
     internal string? AppModelText(AiProviderType p) => AppModelOf(_rows.First(r => r.Provider == p));
     internal void PickAppModel(AiProviderType p, string? model) => SelectAppModel(_rows.First(r => r.Provider == p), model);
     internal void SaveForTests() => Save_Click(this, new RoutedEventArgs());
+
+    private void ImageProvider_Changed(object sender, SelectionChangedEventArgs e) => UpdateImageNow();
+
+    /// <summary>Who will make pictures with what is chosen on screen, or why nothing can (1.7.0).</summary>
+    private void UpdateImageNow()
+    {
+        if (ImageNowText is null) return;
+        var chosen = (AppImageProviderBox.Visibility == Visibility.Visible ? AppImageProviderBox.SelectedItem as ProviderItem : null)?.Provider
+                     ?? (ImageProviderBox.SelectedItem as ProviderItem)?.Provider;
+        if (chosen is { } p)
+        {
+            var hasKey = _rows.FirstOrDefault(r => r.Provider == p)?.KeyText.Length > 0;
+            ImageNowText.Text = hasKey
+                ? $"Pictures will be made by {AiHub.DisplayName(p)}."
+                : $"Pictures are set to {AiHub.DisplayName(p)}, which has no key above — add one, or choose Automatic.";
+            return;
+        }
+        try { ImageNowText.Text = "Automatic. Now: " + _hub.ResolveImageProvider().Reason + "."; }
+        catch (AiException ex) { ImageNowText.Text = ex.Message; }
+    }
 
     private sealed record ProviderItem(AiProviderType Provider)
     {

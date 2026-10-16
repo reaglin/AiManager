@@ -123,6 +123,36 @@ chose, what to pick in that provider's create-key form, and a dated page coverin
 
 ---
 
+## Phase 8 — Making pictures (CourseBuilder+, Ron 2026-10-16)
+
+Ron: *"Lets start Phase 1 of the image generation tool, the plan looks good. This will necessitate that the user
+select from the subset of providers for generation … As far as other issues, simply make sure the user is
+informed."* The plan, research and sources: `..\PreseMaker\docs\plans\AI_IMAGE_GENERATION_PLAN.md` (its phase 1
+is this phase). Design: `docs/PLAN.md` §15.
+
+Exit: a program asks AI Manager for pictures from a description and gets them back as bytes, from whichever of
+OpenAI, Gemini or xAI the user chose, with the cost estimated before and recorded after, and every failure in words
+the user can act on.
+
+| # | Task | Targets | Acceptance | Status |
+|---|---|---|---|---|
+| 8.1 | **1.7.0.** `AiImageRequest` (prompt, style, `AiImageShape` Square / Wide16x9 / Landscape3x2 / Portrait, `AiImageQuality` Draft / Standard / Best, count 1–4, purpose) → `AiHub.GenerateImagesAsync` → `AiImageResult` (`AiGeneratedImage` bytes + type + size from the bytes + revised prompt; provider, model, estimated cost, watermark, **`ProviderReason`** — why that provider, in words); `ImagesGenerated` event | `Images/AiImageGeneration.cs`, `AiHub.cs` | fake-gateway call returns pictures; cancel throws and is recorded as cancelled | ⚠️ |
+| 8.2 | **Providers** `IImageGenerator`: `OpenAiImageGenerator` (`/v1/images/generations`, size 1536×864 for 16:9, quality low/medium/high, base64), `GeminiImageGenerator` (`/v1beta/interactions` with `response_format` image + aspect ratio + 1K/2K, one picture per call; **falls back to `generateContent`** when interactions is not found; finds the picture in either answer), `XAiImageGenerator` (aspect ratio, 1k/2k, quality for 2.0, `b64_json`; a url answer is downloaded at once). Docs read 2026-10-16 (in the interface's comment) | `Images/ImageGenerators.cs` | request bodies and every answer shape tested with fake handlers | ⚠️ |
+| 8.3 | **Which provider draws** (`ResolveImageProvider` → provider + reason): the request's; the program's "Pictures for <app>"; "Provider for pictures (all programs)"; the program's provider if it can draw and has a key; the first that can draw with a key. A choice without a key is an error that says so, never a quiet switch. Claude/Mistral asked for pictures → "cannot make pictures"; nothing can draw → *"Making pictures needs an OpenAI, Google Gemini or xAI key. Claude and Mistral AI cannot make pictures. Add a key in AI Settings."* | `AiHub.cs`, `Store/AiSettingsStore.cs` (`ImageProvider`, `Apps.*.ImageProvider`, `ImageModels`, `ImagePriceOverrides`) | order, reasons and errors tested; saved and read back | ⚠️ |
+| 8.4 | **Prices per picture** `Pricing.PerImage` (prefix × quality; null = unknown, shown as "price unknown", never $0; a newer model never takes an older one's price), `EstimateImage`, `AiHub.EstimateImages(provider, model, quality, count)`; the user's corrections in `ImagePriceOverrides` | `Catalog/Pricing.cs` | each provider's standard price; unknown → null; override wins | ⚠️ |
+| 8.5 | **Ledger:** `UsageRecord.Images`, `UsageGroup.Pictures`, cost per call; a **pictures** tile in both AI Usage windows; CSV gains a last column, Pictures (the WPF window now uses the library's CSV writer); the monthly budget counts picture spending (it sums cost) | `Usage/UsageLedger.cs`, WinForms `UsageDashboardForm` / `UsageReport`, WPF `UsageDashboardView` | ledger round trip with pictures; CSV test | ⚠️ |
+| 8.6 | **Plain errors:** a refusal (OpenAI `moderation_blocked`, Gemini safety block, xAI moderation) → `AiErrorKind.Refused`, *"{vendor} would not make this picture: its safety rules refused the request. Try different words — for example, leave out people's names, brand names, or anything violent."*; OpenAI organisation not verified → how to verify; a free Gemini key → turn on billing; no picture → says so (with Gemini's text if it wrote one) | `Images/ImageGenerators.cs` | one test per error | ⚠️ |
+| 8.7 | **AI Settings (both windows): "Provider for pictures (all programs)"** — Automatic, OpenAI, Gemini (Google), xAI (Grok) only — and **"Pictures for <app>"** (Same as all programs + the three); a line saying who will draw with what is on screen ("Automatic. Now: Gemini (Google), the first provider with a key that can make pictures (Claude (Anthropic) cannot make pictures).") or that the chosen provider has no key (red); Save warns when the picture provider has no key | WinForms `AiSettingsForm` / `AiSettingsSession`, WPF `AiSettingsView` | 2 WinForms tests (only drawing providers offered; the line; saved). **Ron:** look at the two boxes | ⚠️ |
+| 8.8 | **Key help:** each provider's How? and the full page say whether its key can make pictures and what it needs (OpenAI: verify the organisation; Gemini: billing, SynthID; Claude: cannot; Mistral: not through AI Manager); change-log entry 2026-10-16 | `Help/KeyHelp.cs` | 5 tests | ⚠️ |
+| 8.9 | Version **1.7.0**, packed to `C:\nuget-local`; tests green on both targets (138 + 183) | `Directory.Build.props`, `build/pack.ps1` | ⚠️ **Ron:** one real picture with your own key, then see it in AI Usage (CourseBuilder+ gets the button in its plan's next phase) | ⚠️ |
+
+Not verified against a real call yet (no real AI call is ever made by the tests): the raw shape of Gemini's
+interactions answer (the reader looks for the picture anywhere in it, and the fallback is the documented
+generateContent shape), xAI's error wording for a refusal, and OpenAI's exact wording for an unverified organisation.
+The first real picture with each key (8.9) settles them.
+
+---
+
 ## Notes from hand-testing
 
 - **2026-09-12 — Phase 0 done.** 31 unit tests green. `discover` found keys in PreseMaker

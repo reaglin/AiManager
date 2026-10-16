@@ -4,7 +4,10 @@ Shared AI access layer for every AI-enabled app in `C:\Users\ronal\source\repos\
 (AuthorPlus, EasyPeasyRetirement, PreseMaker, CIATLE, and whatever comes next). One place
 to enter API keys, one library that sends prompts and returns answers, one activity log and
 usage ledger, one prompt-template store. **Since 1.5.0, speech to text** (`AiHub.TranscribeAsync`:
-OpenAI whisper-1 or Mistral Voxtral, times per segment and word; first used by VideoStories+). **Phase 5 adds text-to-speech** (credentials for
+OpenAI whisper-1 or Mistral Voxtral, times per segment and word; first used by VideoStories+). **Since 1.7.0, pictures**
+(`AiHub.GenerateImagesAsync`: OpenAI, Gemini or xAI — the user picks "Provider for pictures" in AI Settings; Claude and
+Mistral cannot draw; every result says which provider drew and why; prices per picture in `Pricing.PerImage`; first used by
+CourseBuilder+ — `docs/PLAN.md` §15, `docs/DEVELOPMENT-PLAN.md` phase 8). **Phase 5 adds text-to-speech** (credentials for
 Google Cloud TTS, voices, synthesis, pronunciation dictionary — moving out of PreseMaker; see
 `docs/PLAN.md` §14). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
 

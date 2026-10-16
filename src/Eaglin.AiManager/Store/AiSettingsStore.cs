@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Eaglin.AiManager.Catalog;
 
 namespace Eaglin.AiManager.Store;
 
@@ -32,6 +33,28 @@ public sealed class AiSettings
     public Dictionary<string, ModelPrice> PriceOverrides { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public double? MonthlyBudgetUsd { get; set; }
+
+    /// <summary>
+    /// The provider that makes pictures for every program that has not chosen its own (1.7.0); null =
+    /// automatic (the program's provider when it can draw, else the first that can draw and has a key).
+    /// Only OpenAI, Gemini and xAI can draw.
+    /// </summary>
+    public AiProviderType? ImageProvider { get; set; }
+
+    /// <summary>Picture model per provider (1.7.0), keyed by provider name; absent = the built-in default (<see cref="AiHub.DefaultImageModel"/>).</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
+    public Dictionary<string, string> ImageModels { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>USD per picture, keyed by model id; overrides the built-in table (<see cref="Pricing.PerImage"/>).</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
+    public Dictionary<string, ImagePrice> ImagePriceOverrides { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string? ImageModelFor(AiProviderType p) =>
+        ImageModels.TryGetValue(p.ToString(), out var m) && !string.IsNullOrWhiteSpace(m) ? m : null;
+
+    /// <summary>One program's own provider for pictures, or null when it follows the one for all programs.</summary>
+    public AiProviderType? AppImageProvider(string app) =>
+        Apps.TryGetValue(app, out var a) && a.ImageProvider is { } p && p != AiProviderType.None ? p : null;
 
     public string? ModelFor(AiProviderType p) =>
         Models.TryGetValue(p.ToString(), out var m) && !string.IsNullOrWhiteSpace(m) ? m : null;
@@ -83,6 +106,9 @@ public sealed class AppAiSettings
 {
     public AiProviderType? DefaultProvider { get; set; }
 
+    /// <summary>This program's provider for pictures (1.7.0); null = the one for all programs.</summary>
+    public AiProviderType? ImageProvider { get; set; }
+
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
     public Dictionary<string, string> Models { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -97,7 +123,7 @@ public sealed class AppAiSettings
 
     /// <summary>True when the entry holds nothing (no provider, no models, nothing from a newer version).</summary>
     [JsonIgnore]
-    public bool IsEmpty => DefaultProvider is null && Models.Count == 0 && (Extra is null || Extra.Count == 0);
+    public bool IsEmpty => DefaultProvider is null && ImageProvider is null && Models.Count == 0 && (Extra is null || Extra.Count == 0);
 
     /// <summary>Settings a newer version wrote that this one does not know; written back unchanged.</summary>
     [JsonExtensionData]

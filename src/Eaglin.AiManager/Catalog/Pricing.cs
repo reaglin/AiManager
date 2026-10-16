@@ -55,6 +55,49 @@ public static class Pricing
         return found is { } p ? Math.Max(0, seconds) / 60.0 * p : null;
     }
 
+    /// <summary>
+    /// Picture prices, USD per picture at each quality (1.7.0), matched by the longest prefix of the
+    /// model id. A null price means "not known" — it is shown as "price unknown", never as $0; a
+    /// prefix with all prices null stops a shorter prefix from pricing a different model
+    /// ("gpt-image-2.5" must not take "gpt-image-2"'s price). The vendors' list prices read on
+    /// 2026-10-16 (OpenAI at 1536×1024, Gemini 1K / 2K, xAI flat) — check them when a bill matters.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Prefix, ImagePrice Price)> PerImage = new (string, ImagePrice)[]
+    {
+        ("gpt-image-2",                   new(0.005, 0.041, 0.165)),
+        ("gpt-image-2.5",                 new(null,  null,  null)),    // not in OpenAI's per-picture table yet
+        ("gpt-image-1.5",                 new(null,  0.05,  null)),
+        ("gpt-image-1-mini",              new(null,  0.015, null)),
+        ("gpt-image-1",                   new(null,  null,  null)),
+        ("gemini-nano-banana-2.1",        new(0.0336, 0.0336, 0.0504)),
+        ("gemini-3.1-flash-image",        new(0.067, 0.067, 0.101)),
+        ("gemini-3.1-flash-lite-image",   new(null,  null,  null)),
+        ("gemini-3-pro-image",            new(0.134, 0.134, 0.134)),
+        ("gemini-2.5-flash-image",        new(0.039, 0.039, 0.039)),
+        ("grok-imagine-image-2.0",        new(0.04,  0.04,  0.04)),
+        ("grok-imagine-image-quality",    new(0.05,  0.05,  0.05)),
+        ("grok-imagine-image-pro",        new(null,  null,  null)),    // retired by xAI (May 2026)
+        ("grok-imagine-image",            new(0.02,  0.02,  0.02))
+    };
+
+    /// <summary>Estimated cost of one picture; null when the price is not known. An override (longest prefix) wins over the table.</summary>
+    public static double? EstimateImage(string model, AiImageQuality quality, IReadOnlyDictionary<string, ImagePrice>? overrides = null)
+    {
+        var id = Normalize(model);
+        if (id.Length == 0) return null;
+        ImagePrice? found = null; int foundLen = -1;
+        if (overrides is { Count: > 0 })
+            foreach (var (key, price) in overrides)
+            {
+                var k = Normalize(key);
+                if (id.StartsWith(k, StringComparison.Ordinal) && k.Length > foundLen) { found = price; foundLen = k.Length; }
+            }
+        if (found is null)
+            foreach (var (prefix, price) in PerImage)
+                if (id.StartsWith(prefix, StringComparison.Ordinal) && prefix.Length > foundLen) { found = price; foundLen = prefix.Length; }
+        return found?.For(quality);
+    }
+
     /// <summary>"models/gemini-2.5-flash" → "gemini-2.5-flash"; case-insensitive matching.</summary>
     public static string Normalize(string model)
     {
@@ -92,4 +135,15 @@ public static class Pricing
         if (p is null) return null;
         return inputTokens / 1_000_000.0 * p.InputPerMTok + outputTokens / 1_000_000.0 * p.OutputPerMTok;
     }
+}
+
+/// <summary>USD per picture at each quality (1.7.0); null = not known.</summary>
+public sealed record ImagePrice(double? Draft, double? Standard, double? Best)
+{
+    public double? For(AiImageQuality q) => q switch
+    {
+        AiImageQuality.Draft => Draft,
+        AiImageQuality.Best  => Best,
+        _                    => Standard
+    };
 }

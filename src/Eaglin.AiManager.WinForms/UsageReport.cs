@@ -83,6 +83,8 @@ internal sealed class UsageReport
     }
 
     public string PromptsText  => Number(Totals.Prompts);
+    /// <summary>Pictures made this month (1.7.0).</summary>
+    public string PicturesText => Number(Totals.Pictures);
     public string TokensInText => Number(Totals.InputTokens);
     public string TokensOutText => Number(Totals.OutputTokens);
     /// <summary>Two decimals, or four for a total under a cent, so a light month does not read "$0.00" (free).</summary>

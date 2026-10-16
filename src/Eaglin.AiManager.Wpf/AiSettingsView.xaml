@@ -59,6 +59,9 @@
                         <RowDefinition/>
                         <RowDefinition/>
                         <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Default provider for all programs"/>
@@ -68,9 +71,21 @@
                     <ComboBox  Grid.Row="1" Grid.Column="1" x:Name="AppDefaultProviderBox" Margin="0,2"/>
                     <TextBlock Grid.Row="1" Grid.Column="2" x:Name="AppDefaultHint" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource Ai.MutedText}"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Monthly budget warning (USD)"/>
-                    <TextBox   Grid.Row="2" Grid.Column="1" x:Name="BudgetBox" Margin="0,2" Width="100" HorizontalAlignment="Left"/>
-                    <TextBlock Grid.Row="2" Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource Ai.MutedText}"
+                    <!-- Pictures (1.7.0): only the providers that can draw are offered. -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Provider for pictures (all programs)"/>
+                    <ComboBox  Grid.Row="2" Grid.Column="1" x:Name="ImageProviderBox" Margin="0,2" SelectionChanged="ImageProvider_Changed"
+                               ToolTip="Only OpenAI, Gemini (Google) and xAI can make pictures — Claude and Mistral AI cannot. Automatic uses the provider a program already uses when it can draw, else the first of these that has a key. Each picture costs a few cents on that key."/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource Ai.MutedText}" TextWrapping="Wrap"
+                               Text="Only OpenAI, Gemini and xAI can make pictures; Claude and Mistral AI cannot. Each picture costs a few cents on that key."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" x:Name="AppImageLabel" VerticalAlignment="Center" Text="Pictures for this program"/>
+                    <ComboBox  Grid.Row="3" Grid.Column="1" x:Name="AppImageProviderBox" Margin="0,2" SelectionChanged="ImageProvider_Changed"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" x:Name="ImageNowText" Margin="0,0,0,6" Style="{StaticResource Ai.MutedText}" TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="Monthly budget warning (USD)"/>
+                    <TextBox   Grid.Row="5" Grid.Column="1" x:Name="BudgetBox" Margin="0,2" Width="100" HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="5" Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource Ai.MutedText}"
                                Text="Blank = no warning. Costs are estimates from list prices."/>
                 </Grid>
 

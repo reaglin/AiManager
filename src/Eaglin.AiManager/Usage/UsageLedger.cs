@@ -23,6 +23,8 @@ public sealed class UsageRecord
     public bool           Cancelled { get; set; }
     /// <summary>Seconds of audio for a transcription (1.5.0); absent for prompts.</summary>
     public double?        AudioSec  { get; set; }
+    /// <summary>Pictures made by a picture call (1.7.0); absent for prompts and transcriptions.</summary>
+    public int?           Images    { get; set; }
 }
 
 /// <summary>Totals for one slice of the ledger (a month, an app, a model, a day).</summary>
@@ -37,6 +39,8 @@ public sealed class UsageGroup
     public long   OutputTokens { get; set; }
     public double CostUsd      { get; set; }
     public long   TotalMs      { get; set; }
+    /// <summary>Pictures made (1.7.0).</summary>
+    public int    Pictures     { get; set; }
     public double AverageMs    => Prompts == 0 ? 0 : (double)TotalMs / Prompts;
 
     internal void Add(UsageRecord r)
@@ -47,6 +51,7 @@ public sealed class UsageGroup
         OutputTokens += r.OutTok;
         CostUsd      += r.CostUsd ?? 0;
         TotalMs      += r.Ms;
+        Pictures     += r.Images ?? 0;
     }
 }
 
@@ -209,7 +214,7 @@ public sealed class UsageLedger
     }
 
     /// <summary>The CSV header written by <see cref="ToCsv"/>.</summary>
-    public const string CsvHeader = "Time,App,Provider,Model,Purpose,InputTokens,OutputTokens,EstimatedCostUsd,Milliseconds,Streamed,Result";
+    public const string CsvHeader = "Time,App,Provider,Model,Purpose,InputTokens,OutputTokens,EstimatedCostUsd,Milliseconds,Streamed,Result,Pictures";
 
     /// <summary>
     /// Records as CSV (header first, local times, invariant numbers, RFC 4180 quoting) — what
@@ -226,7 +231,8 @@ public sealed class UsageLedger
               .Append(r.InTok.ToString(CultureInfo.InvariantCulture)).Append(',').Append(r.OutTok.ToString(CultureInfo.InvariantCulture)).Append(',')
               .Append(r.CostUsd?.ToString("0.000000", CultureInfo.InvariantCulture) ?? "").Append(',')
               .Append(r.Ms.ToString(CultureInfo.InvariantCulture)).Append(',').Append(r.Streamed ? "yes" : "no").Append(',')
-              .Append(Csv(r.Cancelled ? "cancelled" : r.Ok ? "ok" : r.Error ?? "failed")).Append('\n');
+              .Append(Csv(r.Cancelled ? "cancelled" : r.Ok ? "ok" : r.Error ?? "failed")).Append(',')
+              .Append(r.Images?.ToString(CultureInfo.InvariantCulture) ?? "").Append('\n');
         }
         return sb.ToString();
 

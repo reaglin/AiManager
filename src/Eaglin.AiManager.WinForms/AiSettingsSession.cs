@@ -25,6 +25,10 @@ internal sealed class SettingsInput
     public AiProviderType DefaultProvider { get; set; } = AiProviderType.Claude;
     /// <summary>null = this app follows the default for all programs.</summary>
     public AiProviderType? AppDefaultProvider { get; set; }
+    /// <summary>Who makes pictures for all programs (1.7.0); null = automatic.</summary>
+    public AiProviderType? ImageProvider { get; set; }
+    /// <summary>Who makes pictures for this app; null = the same as all programs.</summary>
+    public AiProviderType? AppImageProvider { get; set; }
     public double? MonthlyBudgetUsd { get; set; }
 }
 
@@ -89,6 +93,23 @@ internal sealed class AiSettingsSession
 
     public double? MonthlyBudgetUsd => Hub.Settings.MonthlyBudgetUsd;
 
+    /// <summary>Who makes pictures for all programs (null = automatic) — 1.7.0.</summary>
+    public AiProviderType? ImageProvider =>
+        Hub.Settings.ImageProvider is { } p && AiHub.CanGenerateImages(p) ? p : null;
+
+    public AiProviderType? AppImageProvider =>
+        Hub.Settings.AppImageProvider(App) is { } p && AiHub.CanGenerateImages(p) ? p : null;
+
+    /// <summary>
+    /// What "automatic" would choose now, in words for the settings window ("Now: OpenAI, the provider
+    /// CourseBuilder+ uses"), or why nothing can draw.
+    /// </summary>
+    public string ImageProviderNow()
+    {
+        try { return "Now: " + Hub.ResolveImageProvider().Reason + "."; }
+        catch (AiException ex) { return ex.Message; }
+    }
+
     public double SpentThisMonth => Hub.Usage.SpentThisMonth();
 
     /// <summary>
@@ -137,7 +158,9 @@ internal sealed class AiSettingsSession
         Hub.Settings.DefaultProvider = input.DefaultProvider == AiProviderType.None ? AiProviderType.Claude : input.DefaultProvider;
         var app = Hub.Settings.ForApp(App);
         app.DefaultProvider = input.AppDefaultProvider;
+        if (ShowsAppModels) app.ImageProvider = input.AppImageProvider;
         if (app.IsEmpty) Hub.Settings.Apps.Remove(App);
+        Hub.Settings.ImageProvider = input.ImageProvider;
         Hub.Settings.MonthlyBudgetUsd = input.MonthlyBudgetUsd;
 
         Hub.Credentials.Save();

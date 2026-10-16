@@ -372,3 +372,26 @@ kind yet, no voice field on `Character`. The v2 design is in AuthorPlus `docs/DE
 ("Version 2 — Audio"): an `Audio` item kind whose file lives in `audio\{id}.mp3` beside the
 book's other folders, a `Character.Voice` for per-character voices, and speaker attribution of
 dialogue as the prerequisite for multi-voice narration.
+
+## 15. Making pictures (Ron, 2026-10-16 — built in Phase 8, version 1.7.0)
+
+The plan, the research (providers, prices, terms, copyright) and its sources are in CourseBuilder+'s
+`docs/plans/AI_IMAGE_GENERATION_PLAN.md`; this section is the library's part.
+
+- **Shaped like speech to text (1.5.0):** `AiImageRequest` → `AiHub.GenerateImagesAsync` → `AiImageResult`;
+  `IImageGenerator` per vendor (REST, no SDK, through `ProviderHttp`); `ImageProviders` (OpenAI, Gemini, xAI);
+  `Pricing.PerImage`; the ledger's `Images`; an `ImagesGenerated` event. No UI in the library.
+- **Words, not vendor terms:** the request says Shape and Quality; each generator maps them (OpenAI pixel sizes in
+  multiples of 16, Gemini and xAI aspect ratios; low/medium/high, 1K/2K). The app never names a size or a model.
+- **The user chooses who draws**, from the providers that can: "Provider for pictures" in AI Settings, for all
+  programs and per program, beside the text provider. Automatic means: the program's own provider if it can draw and
+  has a key, else the first that can. Every result carries **`ProviderReason`**, and `ResolveImageProvider()` gives it
+  before sending, so a program can always tell the user which AI will draw and why (Ron: *"make sure the user is
+  informed"*).
+- **Money is shown, never hidden:** `EstimateImages` before sending (null = "price unknown", never $0), the real count
+  and estimated cost in the ledger after, picture spending inside the monthly budget, a pictures tile in AI Usage.
+- **Failures in plain words:** a refusal is `AiErrorKind.Refused` with what to change; a key that cannot draw yet
+  says what to do (OpenAI organisation verification, Gemini billing).
+- **Watermarks are passed on** (`AiImageResult.Watermark`: "SynthID" for Gemini) so a program can disclose them.
+- Models and prices live here (rule 6): defaults gpt-image-2, gemini-nano-banana-2.1, grok-imagine-image-2.0;
+  `settings.json` `ImageModels` and `ImagePriceOverrides` let a user correct them without a new version.

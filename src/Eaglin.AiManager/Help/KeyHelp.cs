@@ -34,7 +34,7 @@ public sealed record ProviderKeyHelp(
 public static class KeyHelp
 {
     /// <summary>The date the whole page was last checked (the newest provider date).</summary>
-    public const string CheckedOn = "2026-10-11";
+    public const string CheckedOn = "2026-10-16";
 
     public const string HelpFileName = "api-keys.html";
 
@@ -75,7 +75,7 @@ public static class KeyHelp
                 "https://platform.claude.com/docs/en/manage-claude/authentication"
             }),
 
-        new ProviderKeyHelp(AiProviderType.Gemini, "2026-10-11",
+        new ProviderKeyHelp(AiProviderType.Gemini, "2026-10-16",
             "Gemini is made by Google. Keys are created in Google AI Studio with a Google account.",
             new[]
             {
@@ -104,7 +104,7 @@ public static class KeyHelp
                 "https://ai.google.dev/gemini-api/terms"
             }),
 
-        new ProviderKeyHelp(AiProviderType.OpenAi, "2026-10-11",
+        new ProviderKeyHelp(AiProviderType.OpenAi, "2026-10-16",
             "OpenAI makes ChatGPT's models. API keys are separate from a ChatGPT subscription and are created on the OpenAI Platform.",
             new[]
             {
@@ -165,7 +165,7 @@ public static class KeyHelp
                 "https://docs.mistral.ai/getting-started/quickstarts/admin/manage-workspaces"
             }),
 
-        new ProviderKeyHelp(AiProviderType.XAi, "2026-10-11",
+        new ProviderKeyHelp(AiProviderType.XAi, "2026-10-16",
             "xAI makes the Grok models. Keys are created in the xAI console and belong to a team (a new account has one team, \"default\").",
             new[]
             {
@@ -197,6 +197,8 @@ public static class KeyHelp
     /// <summary>What changed in these instructions, newest first. Add an entry whenever a provider's steps are changed.</summary>
     public static IReadOnlyList<KeyHelpChange> Changes { get; } = new[]
     {
+        new KeyHelpChange("2026-10-16", null,
+            "AI Manager 1.7.0 can make pictures: each provider now says whether its key can (OpenAI, Gemini and xAI can; Claude and Mistral AI cannot) and what it needs first. OpenAI, Gemini and xAI were re-checked on this date for pictures only; their key steps are unchanged since 2026-10-11."),
         new KeyHelpChange("2026-10-11", null,
             "First version of this page: every provider checked against its own documentation."),
         new KeyHelpChange("2026-10-11", AiProviderType.Claude,
@@ -205,6 +207,29 @@ public static class KeyHelp
             "Since May 2026 Gemini refuses older unrestricted keys: restrict the key to the Gemini API."),
         new KeyHelpChange("2026-10-11", AiProviderType.XAi,
             "The key page is console.x.ai/team/default/api-keys; a key must allow at least the chat endpoint.")
+    };
+
+    /// <summary>
+    /// Whether a provider's key can make pictures (1.7.0), and what it needs first — read from each
+    /// provider's documentation on 2026-10-16.
+    /// </summary>
+    public static string PicturesNote(AiProviderType provider) => provider switch
+    {
+        AiProviderType.OpenAi =>
+            "Pictures: yes (gpt-image models, about 4 cents for a slide-size picture at standard quality). OpenAI may ask you to " +
+            "verify your organisation before its picture models work: platform.openai.com ▸ Settings ▸ Organization ▸ General ▸ " +
+            "Verify Organization. Pictures are paid from the same credit as text.",
+        AiProviderType.Gemini =>
+            "Pictures: yes (the \"Nano Banana\" image models, about 3 cents a picture), but only with billing turned on — Google's " +
+            "picture models have no free tier. Every picture carries Google's invisible SynthID watermark.",
+        AiProviderType.XAi =>
+            "Pictures: yes (Grok Imagine, about 4 cents a picture), paid from the same credit as text.",
+        AiProviderType.Claude =>
+            "Pictures: no — Claude reads pictures but cannot make them. For pictures, add an OpenAI, Gemini or xAI key as well.",
+        AiProviderType.Mistral =>
+            "Pictures: not through AI Manager — Mistral AI has no direct picture service with a published price. For pictures, " +
+            "add an OpenAI, Gemini or xAI key as well.",
+        _ => string.Empty
     };
 
     public static ProviderKeyHelp For(AiProviderType provider) =>
@@ -224,6 +249,7 @@ public static class KeyHelp
             foreach (var c in h.Choices) sb.Append("• ").Append(c.Option).Append(": ").AppendLine(c.Choose);
         }
         if (h.Watch.Count > 0) sb.AppendLine().Append("Note: ").AppendLine(h.Watch[0]);
+        if (PicturesNote(provider) is { Length: > 0 } pics) sb.AppendLine().AppendLine(pics);
         sb.AppendLine().Append("Checked ").Append(h.CheckedOn).Append(". Providers change their pages; if yours looks different, see the full help page.");
         return sb.ToString();
     }
@@ -286,6 +312,8 @@ public static class KeyHelp
                 sb.Append("</table>");
             }
             sb.Append("<h3>Paying</h3><p>").Append(E(h.Billing)).Append("</p>");
+            if (PicturesNote(h.Provider) is { Length: > 0 } pics)
+                sb.Append("<h3>Pictures</h3><p>").Append(E(pics)).Append("</p>");
             if (h.Watch.Count > 0)
             {
                 sb.Append("<h3>Watch out for</h3><ul>");
