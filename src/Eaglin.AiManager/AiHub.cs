@@ -705,13 +705,30 @@ public sealed class AiHub
         var sw = Stopwatch.StartNew();
         var audio = new List<byte[]>(pieces.Count);
         int chars = 0;
+        bool ignored = false;
+        var hz = request.SampleRateHertz is int r && r > 0 ? r : (int?)null;
+        var sayAs = SpeechPronunciations(request, voice, language);
         progress?.Report((0, pieces.Count));
         try
         {
             foreach (var piece in pieces)
             {
                 ct.ThrowIfCancellationRequested();
-                audio.Add(await impl.SynthesizeAsync(piece, request.IsSsml, voice, language, rate, request.Format, ct));
+                var these = sayAs.Where(x => piece.Contains(x.Phrase, StringComparison.Ordinal)).ToList();
+                byte[] sound;
+                try
+                {
+                    sound = await impl.SynthesizeAsync(piece, request.IsSsml, voice, language, rate, request.Format, hz, these, ct);
+                }
+                catch (AiException ex) when (these.Count > 0 && GoogleTextToSpeech.IsPronunciationError(ex))
+                {
+                    // A bad IPA must never stop a chapter: say this piece again without the pronunciations.
+                    ActivityLog.Warn("AiHub", $"Google refused the pronunciations for piece {audio.Count + 1} " +
+                                              $"({string.Join(", ", these.Select(x => x.Phrase))}): {ex.Message} — spoken again without them");
+                    ignored = true;
+                    sound = await impl.SynthesizeAsync(piece, request.IsSsml, voice, language, rate, request.Format, hz, null, ct);
+                }
+                audio.Add(sound);
                 chars += piece.Length;
                 progress?.Report((audio.Count, pieces.Count));
             }
@@ -733,12 +750,32 @@ public sealed class AiHub
         var cost = EstimateSpeech(voice, chars);
         var result = new AiSpeech
         {
-            Audio = AudioJoin.Join(audio, request.Format), Format = request.Format, Characters = chars, Requests = pieces.Count,
-            EstimatedCostUsd = cost, Voice = voice, App = App, Purpose = request.Purpose, Elapsed = sw.Elapsed
+            Audio = AudioJoin.Join(audio, request.Format, hz), Format = request.Format, Characters = chars, Requests = pieces.Count,
+            EstimatedCostUsd = cost, Voice = voice, App = App, Purpose = request.Purpose, Elapsed = sw.Elapsed,
+            PronunciationsIgnored = ignored
         };
         ActivityLog.Info("AiHub", $"✓ GoogleTts/{voice}  purpose={purpose}  chars={chars}  pieces={pieces.Count}  bytes={result.Audio.Length}  cost={(cost is null ? "?" : $"${cost:F4}")}  {sw.Elapsed.TotalSeconds:0.0}s");
         Record(p, request.Purpose, sw, 0, 0, ok: true, error: null, streamed: false, cancelled: false, cost, null, null, chars);
         Spoke?.Invoke(result);
+        return result;
+    }
+
+    /// <summary>
+    /// The pronunciations that can go to Google with this voice and language (1.9.0): none unless the voice takes them and
+    /// the language is en-US; empty phrases and empty IPA dropped; one per phrase (the first given).
+    /// </summary>
+    internal static IReadOnlyList<AiPronunciation> SpeechPronunciations(AiSpeechRequest request, string voice, string language)
+    {
+        if (request.Pronunciations is not { Count: > 0 } list) return [];
+        if (!GoogleVoiceNames.AcceptsPronunciations(voice) || !GoogleVoiceNames.PronunciationLanguage(language)) return [];
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<AiPronunciation>();
+        foreach (var x in list)
+        {
+            if (x is null || string.IsNullOrWhiteSpace(x.Phrase) || string.IsNullOrWhiteSpace(x.Ipa)) continue;
+            var phrase = x.Phrase.Trim();
+            if (seen.Add(phrase)) result.Add(new AiPronunciation(phrase, x.Ipa.Trim()));
+        }
         return result;
     }
 

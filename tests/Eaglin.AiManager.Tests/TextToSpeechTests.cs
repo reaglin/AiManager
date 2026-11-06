@@ -514,6 +514,163 @@ public class TextToSpeechTests
         Assert.Contains("service-account file", ex.Message);
     }
 
+    // ── 1.9.0: sample rate and custom pronunciations ─────────────────────────
+
+    private static readonly AiPronunciation[] Names =
+    [
+        new("Olemelukwe", "oʊlɛmɛˈluːkweɪ"),
+        new("Dalgo", "ˈdælɡoʊ"),
+        new("Olemelukwe", "different"),                  // a second entry for a phrase: the first wins
+        new("Nobody", "  "),                             // no IPA: skipped
+        new("  ", "ə")                                   // no phrase: skipped
+    ];
+
+    private static List<(string Phrase, string Ipa, string Encoding)> SentPronunciations(string body)
+    {
+        using var doc = JsonDocument.Parse(body);
+        var list = new List<(string, string, string)>();
+        if (!doc.RootElement.GetProperty("input").TryGetProperty("customPronunciations", out var cp)) return list;
+        foreach (var p in cp.GetProperty("pronunciations").EnumerateArray())
+            list.Add((p.GetProperty("phrase").GetString()!, p.GetProperty("pronunciation").GetString()!, p.GetProperty("phoneticEncoding").GetString()!));
+        return list;
+    }
+
+    [Theory]
+    [InlineData("en-US-Chirp3-HD-Charon", true)]
+    [InlineData("en-GB-Chirp3-HD-Charon", false)]
+    [InlineData("en-US-Chirp-HD-F", false)]
+    [InlineData("en-US-Neural2-A", false)]
+    [InlineData("en-US-Studio-O", false)]
+    [InlineData("Kore", false)]
+    public void Pronunciations_are_taken_by_Chirp_3_HD_voices_in_en_US(string voice, bool accepts)
+    {
+        Assert.Equal(accepts, GoogleVoiceNames.AcceptsPronunciations(voice));
+        Assert.Equal(accepts, new AiVoice { Name = voice, LanguageCode = "en-US", Family = GoogleVoiceNames.Family(voice) }.AcceptsPronunciations);
+    }
+
+    [Fact]
+    public async Task Sample_rate_is_sent_and_the_WAV_comes_back_at_that_rate()
+    {
+        using var t = new TempRoot();
+        var h = new FakeHandler(_ => (HttpStatusCode.OK, AudioBody(Wav([1, 2, 3, 4], 44100))));
+        var hub = HubWithTts(t, h);
+        var text = string.Join(" ", Enumerable.Range(1, 300).Select(i => $"Sentence {i} of the chapter is read aloud."));
+        var r = await hub.SpeakAsync(new AiSpeechRequest { Text = text, Voice = "en-US-Chirp3-HD-Charon", Format = AiAudioFormat.Wav, SampleRateHertz = 44100 });
+
+        Assert.True(h.Requests.Count > 1);
+        foreach (var b in h.Bodies)
+        {
+            using var body = JsonDocument.Parse(b!);
+            Assert.Equal(44100, body.RootElement.GetProperty("audioConfig").GetProperty("sampleRateHertz").GetInt32());
+            Assert.Equal("LINEAR16", body.RootElement.GetProperty("audioConfig").GetProperty("audioEncoding").GetString());
+        }
+        var (fmt, data) = AudioJoin.ReadWav(r.Audio);
+        Assert.Equal(1, BinaryPrimitives.ReadInt16LittleEndian(fmt!.AsSpan(0)));       // PCM
+        Assert.Equal(1, BinaryPrimitives.ReadInt16LittleEndian(fmt.AsSpan(2)));        // mono
+        Assert.Equal(44100, BinaryPrimitives.ReadInt32LittleEndian(fmt.AsSpan(4)));
+        Assert.Equal(88200, BinaryPrimitives.ReadInt32LittleEndian(fmt.AsSpan(8)));
+        Assert.Equal(16, BinaryPrimitives.ReadInt16LittleEndian(fmt.AsSpan(14)));
+        Assert.Equal(h.Requests.Count * 4, data.Length);
+
+        // MP3 asks for the rate too
+        var h2 = new FakeHandler(_ => (HttpStatusCode.OK, AudioBody([0xFF, 0xFB, 1])));
+        hub.TtsFactory = c => new GoogleTextToSpeech(c, h2.Client());
+        await hub.SpeakAsync(new AiSpeechRequest { Text = "Hello.", Voice = "en-US-Neural2-A", SampleRateHertz = 44100 });
+        using var mp3 = JsonDocument.Parse(h2.LastBody!);
+        Assert.Equal(44100, mp3.RootElement.GetProperty("audioConfig").GetProperty("sampleRateHertz").GetInt32());
+    }
+
+    [Fact]
+    public void Samples_without_a_header_get_one_at_the_rate_asked_for()
+    {
+        var joined = AudioJoin.Join([[1, 2], [3, 4]], AiAudioFormat.Wav, 44100);
+        var (fmt, data) = AudioJoin.ReadWav(joined);
+        Assert.Equal(44100, BinaryPrimitives.ReadInt32LittleEndian(fmt!.AsSpan(4)));
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, data.ToArray());
+        Assert.Equal(24000, BinaryPrimitives.ReadInt32LittleEndian(AudioJoin.ReadWav(AudioJoin.Wav([[1, 2]])).Fmt!.AsSpan(4)));
+    }
+
+    [Fact]
+    public async Task Pronunciations_go_only_with_the_pieces_that_contain_the_phrase()
+    {
+        using var t = new TempRoot();
+        var h = new FakeHandler(_ => (HttpStatusCode.OK, AudioBody([0xFF, 0xFB, 1])));
+        var hub = HubWithTts(t, h);
+        var filler = string.Join(" ", Enumerable.Range(1, 300).Select(i => $"Sentence {i} of the chapter is read aloud."));
+        var text = "Dalgo met Olemelukwe. " + filler + " Olemelukwe left.";
+        var r = await hub.SpeakAsync(new AiSpeechRequest { Text = text, Voice = "en-US-Chirp3-HD-Charon", Pronunciations = Names });
+
+        var pieces = SpeechText.Split(text);
+        Assert.True(pieces.Count >= 3);
+        Assert.Equal(pieces.Count, h.Requests.Count);
+        Assert.False(r.PronunciationsIgnored);
+        Assert.Equal([("Olemelukwe", "oʊlɛmɛˈluːkweɪ", "PHONETIC_ENCODING_IPA"), ("Dalgo", "ˈdælɡoʊ", "PHONETIC_ENCODING_IPA")],
+                     SentPronunciations(h.Bodies[0]!));
+        Assert.Empty(SentPronunciations(h.Bodies[1]!));                              // neither name in the middle
+        Assert.Equal([("Olemelukwe", "oʊlɛmɛˈluːkweɪ", "PHONETIC_ENCODING_IPA")], SentPronunciations(h.Bodies[^1]!));
+    }
+
+    [Theory]
+    [InlineData("en-US-Neural2-A", null)]
+    [InlineData("en-GB-Chirp3-HD-Charon", null)]
+    [InlineData("en-US-Chirp3-HD-Charon", "en-GB")]
+    public async Task Pronunciations_are_ignored_for_voices_or_languages_that_do_not_take_them(string voice, string? language)
+    {
+        using var t = new TempRoot();
+        var h = new FakeHandler(_ => (HttpStatusCode.OK, AudioBody([0xFF, 0xFB, 1])));
+        var hub = HubWithTts(t, h);
+        var r = await hub.SpeakAsync(new AiSpeechRequest { Text = "Dalgo met Olemelukwe.", Voice = voice, LanguageCode = language, Pronunciations = Names });
+        Assert.Empty(SentPronunciations(h.LastBody!));
+        Assert.False(r.PronunciationsIgnored);
+    }
+
+    [Fact]
+    public async Task A_refused_pronunciation_sends_the_piece_again_without_them_and_says_so()
+    {
+        using var t = new TempRoot();
+        var h = new FakeHandler(r =>
+        {
+            var body = r.Content!.ReadAsStringAsync().Result;
+            return body.Contains("customPronunciations", StringComparison.Ordinal)
+                ? (HttpStatusCode.BadRequest, "{ \"error\": { \"code\": 400, \"message\": \"Invalid pronunciation for phrase 'Olemelukwe': unrecognised IPA symbol.\", \"status\": \"INVALID_ARGUMENT\" } }")
+                : (HttpStatusCode.OK, AudioBody([0xFF, 0xFB, 9]));
+        });
+        var hub = HubWithTts(t, h);
+        var r = await hub.SpeakAsync(new AiSpeechRequest { Text = "Dalgo met Olemelukwe.", Voice = "en-US-Chirp3-HD-Charon", Pronunciations = Names });
+
+        Assert.True(r.PronunciationsIgnored);
+        Assert.Equal(2, h.Requests.Count);
+        Assert.NotEmpty(SentPronunciations(h.Bodies[0]!));
+        Assert.Empty(SentPronunciations(h.Bodies[1]!));
+        Assert.Equal(new byte[] { 0xFF, 0xFB, 9 }, r.Audio);
+        Assert.Equal("Dalgo met Olemelukwe.".Length, r.Characters);
+        Assert.True(Assert.Single(hub.Usage.Read(DateTime.Now)).Ok);
+
+        // Any other refusal is not retried
+        var h2 = new FakeHandler(HttpStatusCode.BadRequest, "{ \"error\": { \"code\": 400, \"message\": \"Input is too long.\" } }");
+        hub.TtsFactory = c => new GoogleTextToSpeech(c, h2.Client());
+        await Assert.ThrowsAsync<AiException>(() => hub.SpeakAsync(new AiSpeechRequest { Text = "Dalgo met Olemelukwe.", Voice = "en-US-Chirp3-HD-Charon", Pronunciations = Names }));
+        Assert.Single(h2.Requests);
+
+        var mapped = GoogleTextToSpeech.MapError(400, "{ \"error\": { \"message\": \"Invalid pronunciation for phrase 'X'.\" } }", "en-US-Chirp3-HD-Charon");
+        Assert.True(GoogleTextToSpeech.IsPronunciationError(mapped));
+        Assert.Contains("pronunciation list", mapped.Message);
+    }
+
+    [Fact]
+    public async Task A_1_8_0_request_sends_no_rate_and_no_pronunciations()
+    {
+        using var t = new TempRoot();
+        var h = new FakeHandler(_ => (HttpStatusCode.OK, AudioBody(Wav([5, 6], 24000))));
+        var hub = HubWithTts(t, h);
+        var r = await hub.SpeakAsync(new AiSpeechRequest { Text = "Dalgo met Olemelukwe.", Voice = "en-US-Chirp3-HD-Charon", Format = AiAudioFormat.Wav });
+        using var body = JsonDocument.Parse(h.LastBody!);
+        Assert.False(body.RootElement.GetProperty("audioConfig").TryGetProperty("sampleRateHertz", out _));
+        Assert.Equal(["text"], body.RootElement.GetProperty("input").EnumerateObject().Select(p => p.Name));
+        Assert.False(r.PronunciationsIgnored);
+        Assert.Equal(24000, BinaryPrimitives.ReadInt32LittleEndian(AudioJoin.ReadWav(r.Audio).Fmt!.AsSpan(4)));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static byte[] FromBase64Url(string s)

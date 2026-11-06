@@ -181,6 +181,10 @@ public static class AudioJoin
     public static byte[] Join(IReadOnlyList<byte[]> pieces, AiAudioFormat format) =>
         format == AiAudioFormat.Wav ? Wav(pieces) : Mp3(pieces);
 
+    /// <summary>As above; <paramref name="sampleRateHertz"/> (1.9.0) is the rate the WAV was asked for, used for samples that came without a header.</summary>
+    public static byte[] Join(IReadOnlyList<byte[]> pieces, AiAudioFormat format, int? sampleRateHertz) =>
+        format == AiAudioFormat.Wav ? Wav(pieces, sampleRateHertz) : Mp3(pieces);
+
     /// <summary>MP3 frames play end to end, so the pieces are concatenated; an ID3 tag at the start of a later piece is dropped.</summary>
     public static byte[] Mp3(IReadOnlyList<byte[]> pieces)
     {
@@ -206,7 +210,13 @@ public static class AudioJoin
     }
 
     /// <summary>One WAV: the first piece's format, every piece's samples in order, the sizes rewritten.</summary>
-    public static byte[] Wav(IReadOnlyList<byte[]> pieces)
+    public static byte[] Wav(IReadOnlyList<byte[]> pieces) => Wav(pieces, null);
+
+    /// <summary>
+    /// One WAV (1.9.0): as above; a header is written at <paramref name="sampleRateHertz"/> (24 kHz when null) when no piece
+    /// brought one. Google's LINEAR16 headers already carry the rate that was asked for.
+    /// </summary>
+    public static byte[] Wav(IReadOnlyList<byte[]> pieces, int? sampleRateHertz)
     {
         ArgumentNullException.ThrowIfNull(pieces);
         if (pieces.Count == 0) return [];
@@ -218,7 +228,7 @@ public static class AudioJoin
             fmt ??= f;
             data.Write(d.Span);
         }
-        fmt ??= DefaultFormat();
+        fmt ??= DefaultFormat(sampleRateHertz is int hz && hz > 0 ? hz : 24000);
 
         var pcm = data.ToArray();
         using var outStream = new MemoryStream();
@@ -253,14 +263,14 @@ public static class AudioJoin
         return (fmt, data);
     }
 
-    /// <summary>16-bit mono PCM at 24 kHz — Google's usual LINEAR16 — for samples that came without a header.</summary>
-    private static byte[] DefaultFormat()
+    /// <summary>16-bit mono PCM (Google's LINEAR16) at the given rate, for samples that came without a header.</summary>
+    private static byte[] DefaultFormat(int rate)
     {
         var f = new byte[16];
         BinaryPrimitives.WriteUInt16LittleEndian(f.AsSpan(0), 1);          // PCM
         BinaryPrimitives.WriteUInt16LittleEndian(f.AsSpan(2), 1);          // mono
-        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(4), 24000);
-        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(8), 48000);
+        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(4), (uint)rate);
+        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(8), (uint)rate * 2);
         BinaryPrimitives.WriteUInt16LittleEndian(f.AsSpan(12), 2);
         BinaryPrimitives.WriteUInt16LittleEndian(f.AsSpan(14), 16);
         return f;

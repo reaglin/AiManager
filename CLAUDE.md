@@ -12,7 +12,9 @@ CourseBuilder+ — `docs/PLAN.md` §15, `docs/DEVELOPMENT-PLAN.md` phase 8). **S
 encrypted under `credentials.json` `Services`; long text split under Google's 5,000-byte limit and joined into one MP3 or
 WAV; voices cached in `speech\voices.json`; prices per million characters in `Pricing.PerMillionCharacters`; the WPF
 **Voices** section in AI Settings and `VoiceChooserWindow`; first used by Author+'s audiobooks — `docs/PLAN.md` §14,
-`docs/DEVELOPMENT-PLAN.md` phase 5. The pronunciation dictionary is still to move out of PreseMaker). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
+`docs/DEVELOPMENT-PLAN.md` phase 5. **1.9.0** adds `SampleRateHertz` and IPA `Pronunciations` — Google custom
+pronunciations for Chirp 3: HD voices in en-US, per piece, retried without them if refused — for Author+'s audiobook export.
+The pronunciation dictionary is still to move out of PreseMaker). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
 
 **Getting a key** (how to make a key at each provider, dated, shown by How? and the help page) lives in
 `src/Eaglin.AiManager/Help/KeyHelp.cs` (the Google text-to-speech key in `Help/VoiceKeyHelp.cs`); re-check it before each release — `docs/PROVIDER-KEY-HELP.md`.

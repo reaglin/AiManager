@@ -6,6 +6,7 @@ their API keys once, in any app or in the standalone AI Manager, and every app u
 
 What it does: prompts to Claude, Gemini, OpenAI, Mistral and xAI (whole or streamed); speech to text (1.5.0);
 pictures (1.7.0); **text to speech with Google's voices (1.8.0)** — an API key or service account, the voice list,
-any length of text to one MP3 or WAV, and a voice chooser with Hear it for WPF programs.
+any length of text to one MP3 or WAV, and a voice chooser with Hear it for WPF programs; **since 1.9.0** a chosen sample
+rate (44.1 kHz for audiobooks) and IPA pronunciations for names (Chirp 3: HD voices, en-US).
 
 See `docs/PLAN.md` for the design and `docs/DEVELOPMENT-PLAN.md` for the work breakdown.

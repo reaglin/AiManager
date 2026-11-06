@@ -142,22 +142,25 @@ public sealed class GoogleTextToSpeech
     // ── Synthesis ─────────────────────────────────────────────────────────────
 
     /// <summary>One request: text (or SSML) of at most 5,000 bytes to sound. Returns the decoded audio bytes.</summary>
+    public Task<byte[]> SynthesizeAsync(string input, bool isSsml, string voice, string languageCode, double speakingRate,
+                                        AiAudioFormat format, CancellationToken ct) =>
+        SynthesizeAsync(input, isSsml, voice, languageCode, speakingRate, format, null, null, ct);
+
+    /// <summary>
+    /// One request (1.9.0): as above, with a sample rate (<c>audioConfig.sampleRateHertz</c>; null = the voice's own) and
+    /// custom pronunciations (<c>input.customPronunciations.pronunciations[]</c>, IPA), sent as given — the caller
+    /// (<see cref="AiHub.SpeakAsync"/>) chooses which apply to this piece.
+    /// </summary>
     public async Task<byte[]> SynthesizeAsync(string input, bool isSsml, string voice, string languageCode, double speakingRate,
-                                              AiAudioFormat format, CancellationToken ct)
+                                              AiAudioFormat format, int? sampleRateHertz, IReadOnlyList<AiPronunciation>? pronunciations,
+                                              CancellationToken ct)
     {
-        var payload = new
-        {
-            input = isSsml ? (object)new { ssml = input } : new { text = input },
-            voice = new { languageCode, name = voice },
-            audioConfig = new
-            {
-                audioEncoding = format == AiAudioFormat.Wav ? "LINEAR16" : "MP3",
-                speakingRate
-            }
-        };
+        var payload = Payload(input, isSsml, voice, languageCode, speakingRate, format, sampleRateHertz, pronunciations);
         using var request = new HttpRequestMessage(HttpMethod.Post, SynthesizeUrl) { Content = JsonContent.Create(payload) };
         await AuthorizeAsync(request, ct);
-        ActivityLog.AiCall("GoogleTts synthesize", $"REQUEST  voice={voice}  chars={input.Length}  bytes={SpeechText.Bytes(input)}  ssml={isSsml}  {format}");
+        ActivityLog.AiCall("GoogleTts synthesize", $"REQUEST  voice={voice}  chars={input.Length}  bytes={SpeechText.Bytes(input)}  ssml={isSsml}  {format}" +
+                                                  (sampleRateHertz is int hz ? $"  rate={hz}" : "") +
+                                                  (pronunciations is { Count: > 0 } pr ? $"  pronunciations={pr.Count}" : ""));
         using var response = await ProviderHttp.SendAsync(_http, P, "GoogleTts synthesize", request, ct);
         await ThrowIfFailed(response, voice, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -174,6 +177,43 @@ public sealed class GoogleTextToSpeech
         {
             throw new AiException(AiErrorKind.EmptyResponse, P, "Google sent back something that is not sound.", ex);
         }
+    }
+
+    /// <summary>The JSON body of <c>v1/text:synthesize</c>.</summary>
+    internal static Dictionary<string, object> Payload(string input, bool isSsml, string voice, string languageCode, double speakingRate,
+                                                       AiAudioFormat format, int? sampleRateHertz, IReadOnlyList<AiPronunciation>? pronunciations)
+    {
+        var inputObj = new Dictionary<string, object> { [isSsml ? "ssml" : "text"] = input };
+        if (pronunciations is { Count: > 0 })
+            inputObj["customPronunciations"] = new
+            {
+                pronunciations = pronunciations.Select(p => new { phrase = p.Phrase, phoneticEncoding = "PHONETIC_ENCODING_IPA", pronunciation = p.Ipa }).ToArray()
+            };
+        var audioConfig = new Dictionary<string, object>
+        {
+            ["audioEncoding"] = format == AiAudioFormat.Wav ? "LINEAR16" : "MP3",
+            ["speakingRate"]  = speakingRate
+        };
+        if (sampleRateHertz is int hz && hz > 0) audioConfig["sampleRateHertz"] = hz;
+        return new Dictionary<string, object>
+        {
+            ["input"] = inputObj,
+            ["voice"] = new { languageCode, name = voice },
+            ["audioConfig"] = audioConfig
+        };
+    }
+
+    /// <summary>
+    /// True when Google's refusal is about a custom pronunciation (1.9.0) — a 400 that mentions a pronunciation, phoneme or
+    /// phonetic encoding — so the piece can be sent again without them.
+    /// </summary>
+    public static bool IsPronunciationError(AiException ex)
+    {
+        ArgumentNullException.ThrowIfNull(ex);
+        if (ex.StatusCode != 400) return false;
+        var m = ex.Message;
+        return m.Contains("pronunciation", StringComparison.OrdinalIgnoreCase) || m.Contains("phonem", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("phonetic", StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Signing in ────────────────────────────────────────────────────────────
@@ -307,6 +347,8 @@ public sealed class GoogleTextToSpeech
             429 => new(AiErrorKind.RateLimit, P,
                 "Google's text-to-speech limit for the project has been reached for now. Wait a minute and try again; " +
                 $"if it keeps happening, raise the quota in the Google Cloud console. ({detail})", statusCode: status),
+            400 when Says("pronunciation") || Says("phonetic") => new(AiErrorKind.ProviderError, P,
+                $"Google could not use a pronunciation (IPA) given for a name: {detail} Check the pronunciation list.", statusCode: status),
             400 when voice is not null && (Says("voice") || Says("name")) && !Says("ssml") => new(AiErrorKind.ProviderError, P,
                 $"Google could not use the voice \"{voice}\": {detail} Choose another voice.", statusCode: status),
             400 when Says("ssml") => new(AiErrorKind.ProviderError, P,

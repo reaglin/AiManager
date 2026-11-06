@@ -386,6 +386,17 @@ dialogue as the prerequisite for multi-voice narration.
 - The pronunciation dictionary and SSML helpers have not moved yet (with PreseMaker's move, plan 5.4/5.7).
 - Pitch is not sent (Chirp 3: HD voices refuse it); Ogg is not offered.
 
+**Added in 1.9.0 (2026-11-06, for Author+'s audiobook export):**
+
+- `AiSpeechRequest.SampleRateHertz` (null = the voice's own rate) → `audioConfig.sampleRateHertz`; a WAV is one
+  16-bit mono PCM file at that rate. The program makes its own MP3 from it (Author+: 192 kbps at 44.1 kHz).
+- `AiSpeechRequest.Pronunciations` — `AiPronunciation(Phrase, Ipa)` — become Google's custom pronunciations,
+  `input.customPronunciations.pronunciations[] { phrase, phoneticEncoding: PHONETIC_ENCODING_IPA, pronunciation }`,
+  only for Chirp 3: HD voices in en-US (`GoogleVoiceNames.AcceptsPronunciations`, `AiVoice.AcceptsPronunciations`),
+  and per piece only the phrases that piece contains (Google needs an exact match). Other voices ignore them; the
+  program respells names in the text as well. A pronunciation Google refuses never stops a book: the piece is
+  spoken again without them and `AiSpeech.PronunciationsIgnored` is set.
+
 ## 15. Making pictures (Ron, 2026-10-16 — built in Phase 8, version 1.7.0)
 
 The plan, the research (providers, prices, terms, copyright) and its sources are in CourseBuilder+'s

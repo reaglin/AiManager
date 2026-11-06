@@ -50,6 +50,12 @@ public sealed class AiVoice
     /// <summary>True when the voice accepts &lt;sub alias&gt; (pronunciations); Studio, Chirp and Journey do not.</summary>
     public bool AcceptsSub => GoogleVoiceNames.AcceptsSub(Name);
 
+    /// <summary>
+    /// True when Google takes custom pronunciations (IPA for a phrase) with this voice (1.9.0): the Chirp 3: HD
+    /// voices, in en-US for now (Google's API reference: "initial support is for en-us").
+    /// </summary>
+    public bool AcceptsPronunciations => GoogleVoiceNames.AcceptsPronunciations(Name);
+
     /// <summary>For a list: "Charon — Chirp 3: HD, male (en-US)".</summary>
     public string Label => Gender.Length == 0
         ? $"{Speaker} — {Family} ({LanguageCode})"
@@ -57,6 +63,12 @@ public sealed class AiVoice
 
     public override string ToString() => Label;
 }
+
+/// <summary>
+/// How a voice should say one phrase (1.9.0): <paramref name="Phrase"/> exactly as it appears in the text (a name,
+/// "Olemelukwe"), and its pronunciation in the International Phonetic Alphabet ("oʊlɛmɛˈluːkweɪ").
+/// </summary>
+public sealed record AiPronunciation(string Phrase, string Ipa);
 
 /// <summary>Text to speak, and how (1.8.0). Everything an app needs to say; nothing about keys or endpoints.</summary>
 public sealed class AiSpeechRequest
@@ -78,6 +90,21 @@ public sealed class AiSpeechRequest
 
     public AiAudioFormat Format { get; init; } = AiAudioFormat.Mp3;
 
+    /// <summary>
+    /// The sample rate to ask Google for (1.9.0), for example 44100; null = the voice's natural rate (24000 for most).
+    /// Sent as <c>audioConfig.sampleRateHertz</c> for MP3 and WAV; a WAV comes back as one 16-bit mono PCM file at this rate.
+    /// </summary>
+    public int? SampleRateHertz { get; init; }
+
+    /// <summary>
+    /// How to say particular names (1.9.0): a phrase exactly as it appears in the text, and its IPA. Sent to Google as
+    /// custom pronunciations only when the voice takes them (<see cref="GoogleVoiceNames.AcceptsPronunciations"/>) and the
+    /// language is en-US; otherwise ignored (a program that wants a name said right with any voice also respells it in the
+    /// text). Each piece of a long text carries only the phrases that occur in it. If Google refuses one, the piece is sent
+    /// again without them and <see cref="AiSpeech.PronunciationsIgnored"/> says so.
+    /// </summary>
+    public IReadOnlyList<AiPronunciation> Pronunciations { get; init; } = [];
+
     /// <summary>Free text naming what the call is for ("chapter-audio"). Lands in the log and the usage ledger.</summary>
     public string Purpose { get; init; } = "";
 }
@@ -98,6 +125,13 @@ public sealed class AiSpeech
     public required string App { get; init; }
     public string Purpose { get; init; } = "";
     public TimeSpan Elapsed { get; init; }
+
+    /// <summary>
+    /// True when Google refused the custom pronunciations for at least one piece (1.9.0) and that piece was spoken without
+    /// them — so a program can tell the author that a pronunciation in its list needs looking at.
+    /// </summary>
+    public bool PronunciationsIgnored { get; init; }
+
     public DateTime CompletedUtc { get; init; } = DateTime.UtcNow;
 
     /// <summary>".mp3" or ".wav", for saving <see cref="Audio"/> to a file.</summary>
@@ -150,4 +184,15 @@ public static class GoogleVoiceNames
 
     /// <summary>&lt;sub&gt; is refused by Studio voices and by every voice that takes no SSML.</summary>
     public static bool AcceptsSub(string? name) => AcceptsSsml(name) && Family(name) != "Studio";
+
+    /// <summary>
+    /// True for the voices Google takes custom pronunciations with (1.9.0): Chirp 3: HD voices in en-US. Google's API
+    /// reference: "The initial support is for en-us, with plans to expand to other locales in the future."
+    /// </summary>
+    public static bool AcceptsPronunciations(string voiceName) =>
+        Family(voiceName) == "Chirp 3: HD" && PronunciationLanguage(Language(voiceName));
+
+    /// <summary>The languages Google takes custom pronunciations in: en-US only, for now.</summary>
+    internal static bool PronunciationLanguage(string? languageCode) =>
+        string.Equals(languageCode?.Trim(), "en-US", StringComparison.OrdinalIgnoreCase);
 }
