@@ -81,6 +81,7 @@ public sealed class UsageDashboardForm : ScaledForm
         AddTile("in", "tokens sent", "Tokens are pieces of words, roughly ¾ of a word each. Providers charge for the tokens they read…");
         AddTile("out", "tokens received", "…and, at a higher price, for the tokens they write back.");
         AddTile("pictures", "pictures made", "Pictures an AI drew for a program (OpenAI, Gemini or xAI). Each one is charged; the cost is in the estimated cost.");
+        AddTile("chars", "characters spoken", "Characters read aloud by Google text-to-speech for a program. Google charges per million characters, after free characters each month; the cost is in the estimated cost.");
         AddTile("cost", "estimated cost", "Worked out from each provider's list prices. The provider's own bill is the real figure.");
         AddTile("problems", "problems", "Requests that failed (for example a bad key or no credit) or were stopped by the user.");
         AddTile("avg", "average wait", "How long an answer took on average.");
@@ -250,6 +251,8 @@ public sealed class UsageDashboardForm : ScaledForm
         _tileValues["out"].Text = r.TokensOutText;
         _tileValues["cost"].Text = r.CostText;
         _tileValues["pictures"].Text = r.PicturesText;
+        _tileValues["chars"].Text = r.CharactersText;
+        _tileValues["chars"].Parent!.Visible = r.Totals.Characters > 0;   // 1.8.0: only once something was spoken
         _tileValues["problems"].Text = r.ProblemsText;
         _tileValues["avg"].Text = r.AverageText;
 

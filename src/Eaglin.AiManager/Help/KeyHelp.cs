@@ -197,6 +197,8 @@ public static class KeyHelp
     /// <summary>What changed in these instructions, newest first. Add an entry whenever a provider's steps are changed.</summary>
     public static IReadOnlyList<KeyHelpChange> Changes { get; } = new[]
     {
+        new KeyHelpChange("2026-11-06", AiProviderType.GoogleTts,
+            "New (AI Manager 1.8.0): how to get a Google Cloud key for text-to-speech voices — a Cloud project with billing, the Cloud Text-to-Speech API turned on, and a restricted API key."),
         new KeyHelpChange("2026-10-16", null,
             "AI Manager 1.7.0 can make pictures: each provider now says whether its key can (OpenAI, Gemini and xAI can; Claude and Mistral AI cannot) and what it needs first. OpenAI, Gemini and xAI were re-checked on this date for pictures only; their key steps are unchanged since 2026-10-11."),
         new KeyHelpChange("2026-10-11", null,
@@ -296,7 +298,7 @@ public static class KeyHelp
           .Append("Keep the key private: anyone who has it can spend your credit. If it leaks, delete it on the provider's website and create a new one.</p>");
         sb.Append("<nav>");
         foreach (var h in All) sb.Append("<a href=\"#").Append(h.Provider).Append("\">").Append(E(h.Name)).Append("</a>");
-        sb.Append("<a href=\"#changes\">What changed</a></nav>");
+        sb.Append("<a href=\"#voices\">Voices (text-to-speech)</a><a href=\"#changes\">What changed</a></nav>");
 
         foreach (var h in All)
         {
@@ -324,6 +326,8 @@ public static class KeyHelp
             sb.Append(string.Join(" · ", h.Sources.Select(u => $"<a href=\"{E(u)}\">{E(u)}</a>")));
             sb.Append("</p>");
         }
+
+        sb.Append(VoiceKeyHelp.HtmlSection());
 
         sb.Append("<h2 id=\"changes\">What changed in these instructions</h2><table>");
         foreach (var c in Changes)

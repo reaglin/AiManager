@@ -373,6 +373,19 @@ kind yet, no voice field on `Character`. The v2 design is in AuthorPlus `docs/DE
 book's other folders, a `Character.Voice` for per-character voices, and speaker attribution of
 dialogue as the prerequisite for multi-voice narration.
 
+**As built in 1.8.0 (2026-11-06)** — where it differs from the design above:
+
+- The credential is an **API key or a service account** (Ron, 2026-11-06: the key first, as simplest for Store buyers);
+  `credentials.json` → `Services.GoogleTts` with `ApiKeyEncrypted` or `ServiceAccountJsonEncrypted`. PreseMaker's
+  file is imported automatically on the first open of the real store when nothing is stored.
+- No `ITtsProvider` interface yet: one class, `Speech/GoogleTextToSpeech`, and the hub's `SpeakAsync` /
+  `ListVoicesAsync` / `CanSpeak` / `EstimateSpeech` / `Spoke`. The interface comes with a second vendor.
+- Token signing is .NET's own RSA (no `Google.Apis.Auth`).
+- The voice list is cached in `speech\voices.json` (not `models.json`); Gemini-TTS voices are left out.
+- No per-app default voice in `settings.json`: each program keeps its own (Author+: per book and per character).
+- The pronunciation dictionary and SSML helpers have not moved yet (with PreseMaker's move, plan 5.4/5.7).
+- Pitch is not sent (Chirp 3: HD voices refuse it); Ogg is not offered.
+
 ## 15. Making pictures (Ron, 2026-10-16 — built in Phase 8, version 1.7.0)
 
 The plan, the research (providers, prices, terms, copyright) and its sources are in CourseBuilder+'s

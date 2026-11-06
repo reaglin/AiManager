@@ -98,6 +98,40 @@ public static class Pricing
         return found?.For(quality);
     }
 
+    /// <summary>
+    /// Text-to-speech prices (1.8.0), USD per million characters, by kind of Google voice
+    /// (<see cref="AiVoice.Family"/>). Google's list prices as known on 2026-11-06 (the pricing page
+    /// could not be read automatically that day — check https://cloud.google.com/text-to-speech/pricing
+    /// when a bill matters). Google also gives free characters every month, which these estimates
+    /// ignore: Standard and WaveNet 4 million; Neural2, Polyglot, Studio and Chirp 3: HD 1 million.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Family, double UsdPerMillionChars)> PerMillionCharacters = new (string, double)[]
+    {
+        ("Chirp 3: HD",  30.00),
+        ("Chirp HD",     30.00),
+        ("Journey",      30.00),
+        ("Studio",      160.00),
+        ("Neural2",      16.00),
+        ("Polyglot",     16.00),
+        ("News",         16.00),
+        ("Casual",       16.00),
+        ("WaveNet",       4.00),
+        ("Standard",      4.00)
+    };
+
+    /// <summary>USD per million characters for a Google voice (by its kind); null when the kind has no price here.</summary>
+    public static double? SpeechPricePerMillion(string voice)
+    {
+        var family = GoogleVoiceNames.Family(voice);
+        foreach (var (f, price) in PerMillionCharacters)
+            if (f == family) return price;
+        return null;
+    }
+
+    /// <summary>Estimated cost of speaking <paramref name="characters"/> characters with a voice, ignoring the free monthly characters; null when the price is unknown.</summary>
+    public static double? EstimateSpeech(string voice, int characters) =>
+        SpeechPricePerMillion(voice) is { } p ? Math.Max(0, characters) / 1_000_000.0 * p : null;
+
     /// <summary>"models/gemini-2.5-flash" → "gemini-2.5-flash"; case-insensitive matching.</summary>
     public static string Normalize(string model)
     {

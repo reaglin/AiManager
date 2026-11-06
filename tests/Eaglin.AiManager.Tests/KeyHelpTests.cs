@@ -30,7 +30,11 @@ public class KeyHelpTests
         Assert.NotEmpty(KeyHelp.Changes);
         var dates = KeyHelp.Changes.Select(c => c.Date).ToList();
         Assert.Equal(dates.OrderByDescending(d => d, StringComparer.Ordinal), dates);
-        Assert.All(dates, d => Assert.True(string.CompareOrdinal(d, KeyHelp.CheckedOn) <= 0));
+        // 1.8.0: the voices section (Google text-to-speech) carries its own date
+        var newest = string.CompareOrdinal(VoiceKeyHelp.CheckedOn, KeyHelp.CheckedOn) > 0 ? VoiceKeyHelp.CheckedOn : KeyHelp.CheckedOn;
+        Assert.All(dates, d => Assert.True(string.CompareOrdinal(d, newest) <= 0));
+        Assert.Contains("id=\"voices\"", KeyHelp.Html());
+        Assert.Contains("Cloud Text-to-Speech API", VoiceKeyHelp.ShortText());
     }
 
     [Fact]

@@ -54,6 +54,13 @@ key "AI Manager" — it is shared, so a program's name is misleading.
 
 ## Log of checks
 
+### 2026-11-06 — Google text-to-speech (voices), AI Manager 1.8.0
+
+New: `src/Eaglin.AiManager/Help/VoiceKeyHelp.cs` — the steps for a Google Cloud API key for text-to-speech (project,
+billing, enable Cloud Text-to-Speech API, Credentials ▸ API key, restrict it), the service-account alternative, the free
+monthly characters and prices. Written from Google's documented flow; not yet walked through click by click — re-check it
+when Ron makes his first key, and with the provider keys before each release.
+
 ### 2026-10-11 — first version (all five providers)
 
 Checked against the providers' documentation by a research agent; points that could not be

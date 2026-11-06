@@ -14,7 +14,8 @@ public static class AiProviderRouter
         { AiProviderType.Gemini,  "Gemini (Google)"    },
         { AiProviderType.OpenAi,  "OpenAI"             },
         { AiProviderType.Mistral, "Mistral AI"         },
-        { AiProviderType.XAi,     "xAI (Grok)"         }
+        { AiProviderType.XAi,     "xAI (Grok)"         },
+        { AiProviderType.GoogleTts, "Google text-to-speech" }
     };
 
     /// <summary>Model used when neither the app nor the global settings name one.</summary>
@@ -51,9 +52,9 @@ public static class AiProviderRouter
         { AiProviderType.XAi,     "https://console.x.ai/team/default/api-keys"  }
     };
 
-    /// <summary>All provider types except None, in enum order.</summary>
+    /// <summary>The providers that answer prompts (everything except None and the speech service <see cref="AiProviderType.GoogleTts"/>), in enum order.</summary>
     public static IReadOnlyList<AiProviderType> AllProviders { get; } =
-        Enum.GetValues<AiProviderType>().Where(p => p != AiProviderType.None).ToList();
+        Enum.GetValues<AiProviderType>().Where(p => p is not AiProviderType.None and not AiProviderType.GoogleTts).ToList();
 
     public static string DisplayName(AiProviderType provider) =>
         DisplayNames.TryGetValue(provider, out var n) ? n : provider.ToString();

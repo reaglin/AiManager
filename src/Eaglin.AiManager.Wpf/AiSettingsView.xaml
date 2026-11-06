@@ -89,6 +89,60 @@
                                Text="Blank = no warning. Costs are estimates from list prices."/>
                 </Grid>
 
+                <!-- Voices (1.8.0): Google Cloud Text-to-Speech, its own credential. Saved at once, not by the Save button below. -->
+                <TextBlock Style="{StaticResource Ai.H2}" Text="Voices — Google text-to-speech"/>
+                <TextBlock x:Name="VoiceIntro" Style="{StaticResource Ai.MutedText}" Margin="0,0,0,6"
+                           Text="Programs that read aloud (for example Author+'s audiobooks) use Google's voices. This needs a Google Cloud key — a Gemini key does not work here. The key is kept encrypted on this computer and is saved as soon as you click Save key (the Save button at the bottom is not needed for it)."/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Google Cloud API key"/>
+                    <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="VoiceKeyBox" Margin="0,3" VerticalContentAlignment="Center"
+                                 AutomationProperties.Name="Google text-to-speech API key"
+                                 ToolTip="Paste a key made in the Google Cloud console under APIs &amp; Services ▸ Credentials (not a Gemini key from AI Studio). It is hidden as you type. How? says where to get one."/>
+                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
+                        <Button x:Name="VoiceSaveButton" Style="{StaticResource Ai.SmallButton}" Content="Save key" Click="VoiceSave_Click"
+                                ToolTip="Saves the key in the box (encrypted) for every program that uses AI Manager. It takes effect at once."/>
+                        <Button x:Name="VoiceClearButton" Style="{StaticResource Ai.SmallButton}" Content="Clear" Click="VoiceClear_Click"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="Removes the stored Google text-to-speech key or service account from this computer (it asks first)."/>
+                        <TextBlock VerticalAlignment="Center" Margin="10,0,0,0">
+                            <Hyperlink x:Name="VoiceHowLink" Click="VoiceHow_Click"
+                                       AutomationProperties.Name="How to get a Google text-to-speech key: steps and what to choose"
+                                       ToolTip="The steps for getting a Google Cloud key for voices: make a project, turn on billing and the Cloud Text-to-Speech API, create and restrict a key. Also what it costs.">How?</Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Or a service account" Style="{StaticResource Ai.MutedText}"/>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,3">
+                        <Button x:Name="VoiceFileButton" Style="{StaticResource Ai.SmallButton}" Margin="0" Content="Use a service-account file…" Click="VoiceFile_Click"
+                                ToolTip="For people who already have a Google Cloud service-account key file (.json), as CourseBuilder+ used. The file's content is stored encrypted, so the file may be moved or deleted afterwards. Most people should use an API key instead."/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="VoiceDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Status" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="VoiceStatus" Margin="0,4" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <Button x:Name="VoiceTestButton" Style="{StaticResource Ai.SmallButton}" Content="Test" Click="VoiceTest_Click"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="Asks Google for its list of voices with the stored key. Nothing is spoken and nothing is charged."/>
+                        <Button x:Name="VoiceTryButton" Style="{StaticResource Ai.SmallButton}" Content="Try the voices…" Click="VoiceTry_Click"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="Opens the list of Google's voices, where you can hear a sample sentence in any of them. Each sample costs a fraction of a cent (or nothing within Google's free monthly characters)."/>
+                    </StackPanel>
+                </Grid>
+
                 <TextBlock x:Name="PathText" Margin="0,16,0,0" Style="{StaticResource Ai.MutedText}"/>
             </StackPanel>
         </ScrollViewer>

@@ -64,6 +64,49 @@ public static class LegacyCredentials
         return n;
     }
 
+    // ── Google text-to-speech (1.8.0) ─────────────────────────────────────────
+
+    /// <summary>
+    /// The service-account file PreseMaker (CourseBuilder+) narrates with — the path in its
+    /// <c>app_settings.json</c> (<c>TtsCredentialsFilePath</c>) — when the file is there and is a
+    /// service-account key; else null.
+    /// </summary>
+    public static string? FindGoogleTtsServiceAccount(LegacyPaths? paths = null)
+    {
+        paths ??= new LegacyPaths();
+        var root = TryParse(paths.PreseMaker);
+        if (root is null) return null;
+        var file = GetString(root.Value, "TtsCredentialsFilePath").Trim();
+        if (file.Length == 0 || !File.Exists(file)) return null;
+        try
+        {
+            Speech.GoogleServiceAccount.Parse(File.ReadAllText(file, Encoding.UTF8));
+            return file;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
+    /// Copies PreseMaker's service-account file into the store as the Google text-to-speech
+    /// credential (in memory; the caller saves) — only when none is stored, unless
+    /// <paramref name="overwrite"/>. Returns true when it copied one. The file is not changed.
+    /// </summary>
+    public static bool ImportGoogleTts(CredentialStore store, LegacyPaths? paths = null, bool overwrite = false)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (store.GoogleTts is not null && !overwrite) return false;
+        var file = FindGoogleTtsServiceAccount(paths);
+        if (file is null) return false;
+        try { store.SetGoogleTtsServiceAccount(File.ReadAllText(file, Encoding.UTF8), "import:PreseMaker"); }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            ActivityLog.Error("LegacyCredentials", $"Could not import the text-to-speech service account from {file}", ex);
+            return false;
+        }
+        ActivityLog.Info("LegacyCredentials", $"Imported PreseMaker's text-to-speech service account ({file})");
+        return true;
+    }
+
     // ── Readers ───────────────────────────────────────────────────────────────
 
     private static readonly (string Field, AiProviderType Provider)[] PascalFields =

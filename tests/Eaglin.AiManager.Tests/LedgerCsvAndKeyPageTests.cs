@@ -48,7 +48,7 @@ public class LedgerCsvAndKeyPageTests
         Assert.Contains("\"Pres,eMaker\"", csv);
         Assert.Contains("\"say \"\"hi\"\"\nthen stop\"", csv);
         Assert.Contains(",1200,34,0.012500,1500,no,ok", csv);
-        Assert.Contains(",Auth,\n", csv);           // the last column, Pictures (1.7.0), is empty for a prompt
-        Assert.EndsWith(",cancelled,\n", csv);
+        Assert.Contains(",Auth,,\n", csv);          // the last columns, Pictures (1.7.0) and CharactersSpoken (1.8.0), are empty for a prompt
+        Assert.EndsWith(",cancelled,,\n", csv);
     }
 }

@@ -18,6 +18,9 @@ public static class AiPaths
     public static string ModelsFile(string root)      => Path.Combine(root, "models.json");
     public static string LogsDir(string root)         => Path.Combine(root, "logs");
     public static string UsageDir(string root)        => Path.Combine(root, "usage");
+    /// <summary>Text-to-speech files (1.8.0): the cached voice list <c>voices.json</c>.</summary>
+    public static string SpeechDir(string root)       => Path.Combine(root, "speech");
+    public static string VoicesFile(string root)      => Path.Combine(root, "speech", "voices.json");
     public static string PromptsDir(string root, string app) => Path.Combine(root, "prompts", SafeName(app));
 
     /// <summary>An app name made safe for use as a folder or file-name segment.</summary>

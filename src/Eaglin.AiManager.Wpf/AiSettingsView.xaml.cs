@@ -190,6 +190,7 @@ public partial class AiSettingsView : UserControl
         var spent = _hub.Usage.SpentThisMonth();
         PathText.Text  = $"Spent this month, all programs: ${spent:0.00} (estimated from list prices)   ·   Store: {_hub.Root}";
         FooterStatus.Text = string.Empty;
+        LoadVoices();
     }
 
     private void FillModels(Row row, IEnumerable<string>? fetched)

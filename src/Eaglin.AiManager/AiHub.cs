@@ -4,6 +4,7 @@ using System.Text;
 using Eaglin.AiManager.Catalog;
 using Eaglin.AiManager.Prompts;
 using Eaglin.AiManager.Providers;
+using Eaglin.AiManager.Speech;
 using Eaglin.AiManager.Store;
 using Eaglin.AiManager.Usage;
 
@@ -72,12 +73,21 @@ public sealed class AiHub
             _ => throw new ArgumentException($"{t} cannot make pictures.", nameof(t))
         };
 
+    /// <summary>Raised after every successful text-to-speech call (1.8.0).</summary>
+    public event Action<AiSpeech>? Spoke;
+
+    /// <summary>Test seam: builds the Google text-to-speech client for a credential. Defaults to the real service.</summary>
+    internal Func<GoogleTtsCredential, GoogleTextToSpeech> TtsFactory { get; set; }
+
     private string? _budgetWarnedMonth;
+    private readonly HttpClient? _http;
 
     private AiHub(string app, string root, HttpClient? http)
     {
         App  = app;
         Root = root;
+        _http = http;
+        TtsFactory = c => new GoogleTextToSpeech(c, _http);
         ActivityLog.Initialize(root, app);
         Credentials   = new CredentialStore(root);
         SettingsStore = new AiSettingsStore(root);
@@ -95,6 +105,10 @@ public sealed class AiHub
     {
         if (string.IsNullOrWhiteSpace(app)) throw new ArgumentException("An app name is required.", nameof(app));
         var hub = new AiHub(app.Trim(), root ?? AiPaths.DefaultRoot, http);
+        // 1.8.0: CourseBuilder+ (PreseMaker) narrates with a service-account file. When the shared
+        // store has no text-to-speech credential yet, that file is copied in once (only for the real
+        // store under Documents, never for a test or self-test root).
+        if (root is null && hub.Credentials.GoogleTts is null) hub.TryImportLegacyGoogleTts();
         ActivityLog.Info("AiHub", $"Opened (keys: {string.Join(", ", hub.ProvidersWithKeys.DefaultIfEmpty())})");
         return hub;
     }
@@ -573,6 +587,161 @@ public sealed class AiHub
         return result;
     }
 
+    // ── Text to speech (1.8.0) ────────────────────────────────────────────────
+
+    /// <summary>True when a Google text-to-speech credential (an API key or a service-account file) is stored.</summary>
+    public bool CanSpeak => Credentials.GoogleTts is not null;
+
+    /// <summary>How long the cached voice list (<c>speech\voices.json</c>) is used before it is fetched again.</summary>
+    public static readonly TimeSpan VoiceCacheAge = TimeSpan.FromDays(7);
+
+    private IReadOnlyList<AiVoice>? _voices;
+
+    private void TryImportLegacyGoogleTts()
+    {
+        try
+        {
+            if (Legacy.LegacyCredentials.ImportGoogleTts(Credentials)) Credentials.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ActivityLog.Error("AiHub", "Could not save the imported text-to-speech credential", ex);
+        }
+    }
+
+    private GoogleTtsCredential RequireSpeechCredential() => Credentials.GoogleTts
+        ?? throw new AiException(AiErrorKind.NoKey, AiProviderType.GoogleTts,
+            "Add a Google text-to-speech key in AI Settings (the section \"Voices — Google text-to-speech\").");
+
+    /// <summary>
+    /// Google's voices, for one language ("en-US", or "en" for every English voice) or all of them,
+    /// sorted by language then name. The list is fetched once and kept for <see cref="VoiceCacheAge"/>
+    /// in <c>Documents\AiManager\speech\voices.json</c>; <paramref name="refresh"/> fetches it now.
+    /// When a fetch fails and an older list is on disk, the older list is used (unless refreshing).
+    /// Throws <see cref="AiException"/> (<see cref="AiErrorKind.NoKey"/> without a credential).
+    /// </summary>
+    public async Task<IReadOnlyList<AiVoice>> ListVoicesAsync(string? languageCode = null, bool refresh = false, CancellationToken ct = default)
+    {
+        var all = await AllVoicesAsync(refresh, ct);
+        var code = languageCode?.Trim();
+        if (string.IsNullOrEmpty(code)) return all;
+        return all.Where(v => v.LanguageCodes.Any(l => string.Equals(l, code, StringComparison.OrdinalIgnoreCase)
+                                                     || l.StartsWith(code + "-", StringComparison.OrdinalIgnoreCase))).ToList();
+    }
+
+    private async Task<IReadOnlyList<AiVoice>> AllVoicesAsync(bool refresh, CancellationToken ct)
+    {
+        var cred = RequireSpeechCredential();
+        var cached = VoiceCache.Read(Root);
+        if (!refresh)
+        {
+            if (_voices is not null) return _voices;
+            if (cached is not null && DateTime.UtcNow - cached.FetchedUtc < VoiceCacheAge) return _voices = cached.Voices;
+        }
+        try
+        {
+            var fresh = (await TtsFactory(cred).ListVoicesAsync(null, ct))
+                .OrderBy(v => v.LanguageCode, StringComparer.OrdinalIgnoreCase).ThenBy(v => v.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            VoiceCache.Write(Root, fresh);
+            ActivityLog.Info("AiHub", $"Google voices fetched: {fresh.Count}");
+            return _voices = fresh;
+        }
+        catch (AiException ex) when (!refresh && cached is not null)
+        {
+            ActivityLog.Warn("AiHub", $"Could not fetch Google voices ({ex.Kind}); using the list from {cached.FetchedUtc:yyyy-MM-dd}");
+            return _voices = cached.Voices;
+        }
+    }
+
+    /// <summary>USD per million characters for a voice (by its kind), or null when unknown.</summary>
+    public static double? SpeechPricePerMillion(string voice) => Pricing.SpeechPricePerMillion(voice);
+
+    /// <summary>Price × characters for a voice, ignoring Google's free monthly characters; null when the price is unknown.</summary>
+    public double? EstimateSpeech(string voice, int characters) => Pricing.EstimateSpeech(voice, characters);
+
+    /// <summary>The characters a request will be billed for (its pieces, SSML wrappers included) — to show the cost before sending.</summary>
+    public static int SpeechCharacters(AiSpeechRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return SpeechPieces(request).Sum(p => p.Length);
+    }
+
+    private static IReadOnlyList<string> SpeechPieces(AiSpeechRequest request) =>
+        request.IsSsml ? SpeechText.SplitSsml(request.Text) : SpeechText.Split(request.Text);
+
+    /// <summary>
+    /// Speaks text with a Google voice and returns one playable file (MP3 or WAV). Text over Google's
+    /// 5,000-byte limit is split at sentences and sent piece by piece, in order; <paramref name="progress"/>
+    /// hears (pieces done, pieces in all) before the first and after each. Throws <see cref="AiException"/>
+    /// on anything the user can act on (no credential, the API not turned on, a voice or SSML Google
+    /// refuses, the quota), <see cref="ArgumentException"/> for no text or no voice, and
+    /// <see cref="OperationCanceledException"/> on cancel. Every call is one line of the usage ledger,
+    /// with the characters sent (also when it failed or was cancelled part way) and the estimated cost.
+    /// </summary>
+    public async Task<AiSpeech> SpeakAsync(AiSpeechRequest request, IProgress<(int Done, int Total)>? progress = null, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.Text)) throw new ArgumentException("There is no text to speak.", nameof(request));
+        if (string.IsNullOrWhiteSpace(request.Voice)) throw new ArgumentException("Choose a voice.", nameof(request));
+        var voice = request.Voice.Trim();
+        var cred  = RequireSpeechCredential();
+        var language = string.IsNullOrWhiteSpace(request.LanguageCode) ? GoogleVoiceNames.Language(voice) : request.LanguageCode.Trim();
+        if (language.Length == 0)
+            throw new AiException(AiErrorKind.ProviderError, AiProviderType.GoogleTts,
+                $"The voice name \"{voice}\" does not say its language. Choose a voice from the list, or give the language (for example en-US).");
+        if (request.IsSsml && !GoogleVoiceNames.AcceptsSsml(voice))
+            throw new AiException(AiErrorKind.ProviderError, AiProviderType.GoogleTts,
+                $"The voice {GoogleVoiceNames.Speaker(voice)} ({GoogleVoiceNames.Family(voice)}) takes plain text only, not speech markup (SSML). " +
+                "Send plain text, or choose a Studio, Neural2, WaveNet or Standard voice.");
+
+        var pieces  = SpeechPieces(request);
+        if (pieces.Count == 0) throw new ArgumentException("There is no text to speak.", nameof(request));
+        var rate    = Math.Clamp(request.SpeakingRate, 0.25, 4.0);
+        var purpose = string.IsNullOrWhiteSpace(request.Purpose) ? "(unnamed)" : request.Purpose;
+        var impl    = TtsFactory(cred);
+        var p       = new Called(AiProviderType.GoogleTts, voice, purpose);
+
+        ActivityLog.Info("AiHub", $"→ GoogleTts/{voice}  purpose={purpose}  pieces={pieces.Count}  chars={pieces.Sum(x => x.Length)}  {request.Format}");
+        var sw = Stopwatch.StartNew();
+        var audio = new List<byte[]>(pieces.Count);
+        int chars = 0;
+        progress?.Report((0, pieces.Count));
+        try
+        {
+            foreach (var piece in pieces)
+            {
+                ct.ThrowIfCancellationRequested();
+                audio.Add(await impl.SynthesizeAsync(piece, request.IsSsml, voice, language, rate, request.Format, ct));
+                chars += piece.Length;
+                progress?.Report((audio.Count, pieces.Count));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Record(p, request.Purpose, sw, 0, 0, ok: false, error: null, streamed: false, cancelled: true,
+                   EstimateSpeech(voice, chars), null, null, chars);
+            throw;
+        }
+        catch (AiException ex)
+        {
+            Record(p, request.Purpose, sw, 0, 0, ok: false, error: ex.Kind.ToString(), streamed: false, cancelled: false,
+                   EstimateSpeech(voice, chars), null, null, chars);
+            throw;
+        }
+        sw.Stop();
+
+        var cost = EstimateSpeech(voice, chars);
+        var result = new AiSpeech
+        {
+            Audio = AudioJoin.Join(audio, request.Format), Format = request.Format, Characters = chars, Requests = pieces.Count,
+            EstimatedCostUsd = cost, Voice = voice, App = App, Purpose = request.Purpose, Elapsed = sw.Elapsed
+        };
+        ActivityLog.Info("AiHub", $"✓ GoogleTts/{voice}  purpose={purpose}  chars={chars}  pieces={pieces.Count}  bytes={result.Audio.Length}  cost={(cost is null ? "?" : $"${cost:F4}")}  {sw.Elapsed.TotalSeconds:0.0}s");
+        Record(p, request.Purpose, sw, 0, 0, ok: true, error: null, streamed: false, cancelled: false, cost, null, null, chars);
+        Spoke?.Invoke(result);
+        return result;
+    }
+
     // ── Accounting ────────────────────────────────────────────────────────────
 
     private AiResponse Finish(Prepared p, AiRequest request, Stopwatch sw, string text, int inTok, int outTok, string? stop, bool streamed)
@@ -605,7 +774,7 @@ public sealed class AiHub
     private sealed record Called(AiProviderType Provider, string Model, string Purpose);
 
     private void Record(Called p, string requestPurpose, Stopwatch sw, int inTok, int outTok,
-                        bool ok, string? error, bool streamed, bool cancelled, double? cost, double? audioSec, int? images = null)
+                        bool ok, string? error, bool streamed, bool cancelled, double? cost, double? audioSec, int? images = null, int? chars = null)
     {
         if (!ok)
             ActivityLog.Warn("AiHub", cancelled
@@ -618,7 +787,7 @@ public sealed class AiHub
             InTok = inTok, OutTok = outTok,
             CostUsd = cost ?? (inTok + outTok > 0 ? Pricing.Estimate(p.Model, inTok, outTok, Settings.PriceOverrides) : null),
             Ms = sw.ElapsedMilliseconds, Ok = ok, Error = error, Streamed = streamed, Cancelled = cancelled,
-            AudioSec = audioSec, Images = images
+            AudioSec = audioSec, Images = images, Chars = chars
         });
 
         CheckBudget();

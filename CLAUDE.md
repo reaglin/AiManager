@@ -7,12 +7,15 @@ usage ledger, one prompt-template store. **Since 1.5.0, speech to text** (`AiHub
 OpenAI whisper-1 or Mistral Voxtral, times per segment and word; first used by VideoStories+). **Since 1.7.0, pictures**
 (`AiHub.GenerateImagesAsync`: OpenAI, Gemini or xAI — the user picks "Provider for pictures" in AI Settings; Claude and
 Mistral cannot draw; every result says which provider drew and why; prices per picture in `Pricing.PerImage`; first used by
-CourseBuilder+ — `docs/PLAN.md` §15, `docs/DEVELOPMENT-PLAN.md` phase 8). **Phase 5 adds text-to-speech** (credentials for
-Google Cloud TTS, voices, synthesis, pronunciation dictionary — moving out of PreseMaker; see
-`docs/PLAN.md` §14). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
+CourseBuilder+ — `docs/PLAN.md` §15, `docs/DEVELOPMENT-PLAN.md` phase 8). **Since 1.8.0, text to speech**
+(`AiHub.SpeakAsync` / `ListVoicesAsync`: Google Cloud Text-to-Speech with an API key or a service-account file, stored
+encrypted under `credentials.json` `Services`; long text split under Google's 5,000-byte limit and joined into one MP3 or
+WAV; voices cached in `speech\voices.json`; prices per million characters in `Pricing.PerMillionCharacters`; the WPF
+**Voices** section in AI Settings and `VoiceChooserWindow`; first used by Author+'s audiobooks — `docs/PLAN.md` §14,
+`docs/DEVELOPMENT-PLAN.md` phase 5. The pronunciation dictionary is still to move out of PreseMaker). Decided with Ron 2026-09-12; see `docs/PLAN.md`.
 
 **Getting a key** (how to make a key at each provider, dated, shown by How? and the help page) lives in
-`src/Eaglin.AiManager/Help/KeyHelp.cs`; re-check it before each release — `docs/PROVIDER-KEY-HELP.md`.
+`src/Eaglin.AiManager/Help/KeyHelp.cs` (the Google text-to-speech key in `Help/VoiceKeyHelp.cs`); re-check it before each release — `docs/PROVIDER-KEY-HELP.md`.
 
 **Read first:** `docs/PLAN.md` (design and decisions) then `docs/DEVELOPMENT-PLAN.md`
 (numbered tasks with status).

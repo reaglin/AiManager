@@ -87,6 +87,8 @@ public partial class UsageDashboardView : UserControl
         TileOut.Text     = t.OutputTokens.ToString("N0", CultureInfo.CurrentCulture);
         TileCost.Text    = t.CostUsd.ToString("$0.00", CultureInfo.InvariantCulture);
         TilePictures.Text = t.Pictures.ToString("N0", CultureInfo.CurrentCulture);
+        TileChars.Text   = t.Characters.ToString("N0", CultureInfo.CurrentCulture);
+        CharsTile.Visibility = t.Characters > 0 ? Visibility.Visible : Visibility.Collapsed;   // 1.8.0: only once something was spoken
         TileErrors.Text  = $"{t.Failed} / {t.Cancelled}";
         TileAvg.Text     = t.Prompts == 0 ? "–" : t.AverageMs >= 1000 ? $"{t.AverageMs / 1000:0.0} s" : $"{t.AverageMs:0} ms";
 
